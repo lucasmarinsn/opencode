@@ -18,13 +18,13 @@ export function SettingsServerScope(props: ParentProps) {
   return (
     <Show when={settings.general.newLayoutDesigns()} fallback={props.children}>
       <Show when={global.settings.server.selected()}>
-        {(server) => <SettingsServerDataProviders server={server()}>{props.children}</SettingsServerDataProviders>}
+        {(server) => <SettingsServerDataScope server={server()}>{props.children}</SettingsServerDataScope>}
       </Show>
     </Show>
   )
 }
 
-function SettingsServerDataProviders(props: ParentProps<{ server: ServerConnection.Any }>) {
+export function SettingsServerDataScope(props: ParentProps<{ server: ServerConnection.Any }>) {
   const global = useGlobal()
   const serverCtx = () => global.ensureServerCtx(props.server)
 

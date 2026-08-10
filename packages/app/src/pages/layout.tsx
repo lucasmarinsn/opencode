@@ -926,12 +926,6 @@ export default function LegacyLayout(props: ParentProps) {
         onSelect: () => navigateProjectByOffset(1),
       },
       {
-        id: "provider.connect",
-        title: language.t("command.provider.connect"),
-        category: language.t("command.category.provider"),
-        onSelect: () => connectProvider(),
-      },
-      {
         id: "server.switch",
         title: language.t("command.server.switch"),
         category: language.t("command.category.server"),
@@ -2198,7 +2192,7 @@ export default function LegacyLayout(props: ParentProps) {
         <div
           class="shrink-0 px-3 py-3"
           classList={{
-            hidden: store.gettingStartedDismissed || !(providers.all().size > 0 && providers.paid().length === 0),
+            hidden: providers.connected().some((provider) => provider.id === "fryn"),
           }}
         >
           <div class="rounded-xl bg-background-base shadow-xs-border-base" data-component="getting-started">
@@ -2206,18 +2200,15 @@ export default function LegacyLayout(props: ParentProps) {
               <div class="flex flex-col gap-2">
                 <div class="text-14-medium text-text-strong">{language.t("sidebar.gettingStarted.title")}</div>
                 <div class="text-14-regular text-text-base" style={{ "line-height": "var(--line-height-normal)" }}>
-                  {language.t("sidebar.gettingStarted.line1")}
+                  O Fryn não conseguiu ativar esta instalação automaticamente.
                 </div>
                 <div class="text-14-regular text-text-base" style={{ "line-height": "var(--line-height-normal)" }}>
-                  {language.t("sidebar.gettingStarted.line2")}
+                  Verifique a conexão e tente novamente. Se persistir, fale com o administrador do Fryn.
                 </div>
               </div>
               <div data-component="getting-started-actions">
-                <Button size="large" icon="plus-small" onClick={connectProvider}>
-                  {language.t("command.provider.connect")}
-                </Button>
-                <Button size="large" variant="ghost" onClick={() => setStore("gettingStartedDismissed", true)}>
-                  {language.t("toast.update.action.notYet")}
+                <Button size="large" icon="reset" onClick={() => void platform.restart()}>
+                  Tentar novamente
                 </Button>
               </div>
             </div>
@@ -2249,7 +2240,7 @@ export default function LegacyLayout(props: ParentProps) {
       settingsKeybind={() => command.keybind("settings.open")}
       onOpenSettings={openSettings}
       helpLabel={() => language.t("sidebar.help")}
-      onOpenHelp={() => platform.openExternal("https://opencode.ai/desktop-feedback")}
+      onOpenHelp={() => openSettings()}
       renderPanel={() =>
         mobile ? <SidebarPanel project={currentProject} mobile /> : <SidebarPanel project={currentProject} merged />
       }

@@ -1,6 +1,6 @@
-# OpenCode Desktop
+# Fryn Desktop
 
-The OpenCode Desktop app, built with Electron.
+The Fryn app, built with Electron.
 
 ## Development
 

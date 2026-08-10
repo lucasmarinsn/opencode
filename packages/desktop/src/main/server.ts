@@ -6,6 +6,7 @@ import { getLogger } from "./logging"
 import { getUserShell, loadShellEnv } from "./shell-env"
 import { getStore } from "./store"
 import { DEFAULT_SERVER_URL_KEY } from "./store-keys"
+import { ensureFrynLicense } from "./fryn-license"
 
 export type HealthCheck = { wait: Promise<void> }
 
@@ -16,7 +17,7 @@ type SidecarMessage =
 
 export type SidecarListener = { stop: () => Promise<void> }
 
-const SIDECAR_SERVICE_NAME = "opencode server"
+const SIDECAR_SERVICE_NAME = "Fryn AI Service"
 const SIDECAR_START_STALL_TIMEOUT = 60_000
 const SIDECAR_STOP_TIMEOUT = 6_000
 
@@ -41,11 +42,56 @@ export function setDefaultServerUrl(url: string | null) {
   getStore().delete(DEFAULT_SERVER_URL_KEY)
 }
 
-export function preferAppEnv(userDataPath: string) {
+export async function preferAppEnv(userDataPath: string) {
   const shell = process.platform === "win32" ? null : getUserShell()
   const shellEnv = shell ? loadShellEnv(shell, getLogger()) : null
+
+  // Each desktop installation receives only a revocable Fryn license token.
+  // The upstream AI credential and model remain exclusively on the Fryn backend.
+  const license = await ensureFrynLicense().catch((error) => {
+    getLogger().error("automatic Fryn activation failed", error)
+    return undefined
+  })
+
+  const frynConfig = {
+    autoupdate: false,
+    share: "disabled",
+    enabled_providers: ["fryn"],
+    model: "fryn/assistant",
+    small_model: "fryn/assistant",
+    provider: {
+      fryn: {
+        name: "Fryn AI",
+        env: ["FRYN_LICENSE_TOKEN"],
+        npm: "@ai-sdk/openai-compatible",
+        options: {
+          name: "Fryn AI",
+          baseURL: license ? `${license.backendUrl}/v1` : "http://127.0.0.1:1/v1",
+          headers: { "X-Fryn-Client": "desktop" },
+        },
+        models: {
+          assistant: {
+            id: "assistant",
+            name: "Fryn AI",
+            family: "fryn",
+            reasoning: true,
+            temperature: true,
+            tool_call: true,
+            cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+            limit: { context: 262144, output: 32768 },
+            modalities: { input: ["text"], output: ["text"] },
+          },
+        },
+      },
+    },
+  }
+
   Object.assign(process.env, {
     ...shellEnv,
+    ...(license
+      ? { FRYN_LICENSE_TOKEN: license.token, FRYN_BACKEND_URL: license.backendUrl }
+      : { FRYN_LICENSE_ERROR: "1" }),
+    OPENCODE_CONFIG_CONTENT: JSON.stringify(frynConfig),
     OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",
     OPENCODE_EXPERIMENTAL_FILEWATCHER: "true",
     OPENCODE_CLIENT: "desktop",

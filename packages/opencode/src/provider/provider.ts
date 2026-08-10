@@ -167,6 +167,51 @@ function selectBedrockMantleLanguageModel(sdk: BundledSDK, modelID: string) {
 
 function custom(dep: CustomDep): Record<string, CustomLoader> {
   return {
+    fryn: Effect.fnUntraced(function* () {
+      const token = yield* dep.get("FRYN_LICENSE_TOKEN")
+      const backendUrl = yield* dep.get("FRYN_BACKEND_URL")
+      if (!token || !backendUrl) return { autoload: false }
+
+      const sanitize = (value: string) =>
+        value
+          .replace(/cohere\/north-mini-code(?::free)?/gi, "Fryn AI")
+          .replace(/qwen\/[A-Za-z0-9_.:-]+/gi, "Fryn AI")
+          .replace(/openrouter\/free/gi, "Fryn AI")
+          .replace(/north[ -]?mini[ -]?code/gi, "Fryn AI")
+          .replace(/qwen(?:3(?:\.[0-9]+)?(?:[ -]?(?:coder|flash|plus))?)?/gi, "Fryn AI")
+          .replace(/cohere/gi, "Fryn")
+          .replace(/openrouter(?:\.ai)?/gi, "Fryn AI")
+
+      const frynFetch: typeof fetch = async (input, init) => {
+        let response: Response
+        try {
+          response = await fetch(input, init)
+        } catch {
+          throw new Error("Não foi possível conectar ao Fryn AI.")
+        }
+        if (response.ok) return response
+
+        const text = sanitize(await response.text())
+        const headers = new Headers(response.headers)
+        headers.delete("content-length")
+        return new Response(text, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        })
+      }
+
+      return {
+        autoload: true,
+        options: {
+          apiKey: token,
+          name: "Fryn AI",
+          baseURL: `${backendUrl.replace(/\/$/, "")}/v1`,
+          headers: { "X-Fryn-Client": "desktop" },
+          fetch: frynFetch,
+        },
+      }
+    }),
     anthropic: () =>
       Effect.succeed({
         autoload: false,

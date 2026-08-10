@@ -1,16 +1,32 @@
 import { type ComponentProps } from "solid-js"
 
+const FrynSymbol = (props: { id: string }) => (
+  <>
+    <defs>
+      <linearGradient id={props.id} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#8b5cf6" />
+        <stop offset="0.55" stop-color="#7c3aed" />
+        <stop offset="1" stop-color="#22d3ee" />
+      </linearGradient>
+    </defs>
+    <path
+      d="M13 7h39c-1.2 9-7.8 15-17.5 15H25v8h20c-1 9-7.4 15-17 15h-3v3.5C25 56 20.5 61 12 64V17c0-4.7.2-7.3 1-10Z"
+      fill={`url(#${props.id})`}
+    />
+  </>
+)
+
 export const Mark = (props: { class?: string }) => {
   return (
     <svg
       data-component="logo-mark"
       classList={{ [props.class ?? ""]: !!props.class }}
-      viewBox="0 0 16 20"
+      viewBox="0 0 64 64"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      aria-label="Fryn"
     >
-      <path data-slot="logo-logo-mark-shadow" d="M12 16H4V8H12V16Z" fill="var(--icon-weak-base)" />
-      <path data-slot="logo-logo-mark-o" d="M12 4H4V16H12V4ZM16 20H0V0H16V20Z" fill="var(--icon-strong-base)" />
+      <FrynSymbol id="fryn-mark-gradient" />
     </svg>
   )
 }
@@ -21,12 +37,12 @@ export const Splash = (props: Pick<ComponentProps<"svg">, "ref" | "class">) => {
       ref={props.ref}
       data-component="logo-splash"
       classList={{ [props.class ?? ""]: !!props.class }}
-      viewBox="0 0 80 100"
+      viewBox="0 0 64 64"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      aria-label="Fryn"
     >
-      <path d="M60 80H20V40H60V80Z" fill="var(--icon-base)" />
-      <path d="M60 20H20V80H60V20ZM80 100H0V0H80V100Z" fill="var(--icon-strong-base)" />
+      <FrynSymbol id="fryn-splash-gradient" />
     </svg>
   )
 }
@@ -35,28 +51,25 @@ export const Logo = (props: { class?: string }) => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 234 42"
+      viewBox="0 0 210 64"
       fill="none"
       classList={{ [props.class ?? ""]: !!props.class }}
+      aria-label="Fryn"
     >
-      <g>
-        <path d="M18 30H6V18H18V30Z" fill="var(--icon-weak-base)" />
-        <path d="M18 12H6V30H18V12ZM24 36H0V6H24V36Z" fill="var(--icon-base)" />
-        <path d="M48 30H36V18H48V30Z" fill="var(--icon-weak-base)" />
-        <path d="M36 30H48V12H36V30ZM54 36H36V42H30V6H54V36Z" fill="var(--icon-base)" />
-        <path d="M84 24V30H66V24H84Z" fill="var(--icon-weak-base)" />
-        <path d="M84 24H66V30H84V36H60V6H84V24ZM66 18H78V12H66V18Z" fill="var(--icon-base)" />
-        <path d="M108 36H96V18H108V36Z" fill="var(--icon-weak-base)" />
-        <path d="M108 12H96V36H90V6H108V12ZM114 36H108V12H114V36Z" fill="var(--icon-base)" />
-        <path d="M144 30H126V18H144V30Z" fill="var(--icon-weak-base)" />
-        <path d="M144 12H126V30H144V36H120V6H144V12Z" fill="var(--icon-strong-base)" />
-        <path d="M168 30H156V18H168V30Z" fill="var(--icon-weak-base)" />
-        <path d="M168 12H156V30H168V12ZM174 36H150V6H174V36Z" fill="var(--icon-strong-base)" />
-        <path d="M198 30H186V18H198V30Z" fill="var(--icon-weak-base)" />
-        <path d="M198 12H186V30H198V12ZM204 36H180V6H198V0H204V36Z" fill="var(--icon-strong-base)" />
-        <path d="M234 24V30H216V24H234Z" fill="var(--icon-weak-base)" />
-        <path d="M216 12V18H228V12H216ZM234 24H216V30H234V36H210V6H234V24Z" fill="var(--icon-strong-base)" />
+      <g transform="translate(0 0)">
+        <FrynSymbol id="fryn-logo-gradient" />
       </g>
+      <text
+        x="76"
+        y="45"
+        fill="var(--text-strong, currentColor)"
+        font-size="39"
+        font-weight="700"
+        font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+        letter-spacing="-1.2"
+      >
+        Fryn
+      </text>
     </svg>
   )
 }

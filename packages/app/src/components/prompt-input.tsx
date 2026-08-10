@@ -1680,107 +1680,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       data-component="prompt-model-control"
                       classList={{ "animate-in fade-in duration-300": providersShouldFadeIn() }}
                     >
-                      <Show
-                        when={props.controls.model.paid}
-                        fallback={
-                          <TooltipKeybind
-                            placement="top"
-                            gutter={4}
-                            title={language.t("command.model.choose")}
-                            keybind={command.keybind("model.choose")}
-                          >
-                            <Button
-                              data-action="prompt-model"
-                              as="div"
-                              variant="ghost"
-                              size="normal"
-                              class="min-w-0 max-w-[320px] text-13-regular text-text-base group"
-                              style={control()}
-                              onClick={() => {
-                                dialog.show(() => <DialogSelectModelUnpaid model={props.controls.model.selection} />)
-                              }}
-                            >
-                              <Show when={props.controls.model.selection.current()?.provider?.id}>
-                                <ProviderIcon
-                                  id={props.controls.model.selection.current()?.provider?.id ?? ""}
-                                  class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
-                                  style={{ "will-change": "opacity", transform: "translateZ(0)" }}
-                                />
-                              </Show>
-                              <span class="truncate">
-                                {props.controls.model.selection.current()?.name ??
-                                  language.t("dialog.model.select.title")}
-                              </span>
-                              <Icon name="chevron-down" size="small" class="shrink-0" />
-                            </Button>
-                          </TooltipKeybind>
-                        }
+                      <Button
+                        data-action="prompt-model"
+                        as="div"
+                        variant="ghost"
+                        size="normal"
+                        class="min-w-0 max-w-[320px] text-13-regular text-text-base"
+                        style={control()}
                       >
-                        <TooltipKeybind
-                          placement="top"
-                          gutter={4}
-                          title={language.t("command.model.choose")}
-                          keybind={command.keybind("model.choose")}
-                        >
-                          <ModelSelectorPopover
-                            model={props.controls.model.selection}
-                            trigger={(triggerProps) => (
-                              <Button
-                                {...triggerProps}
-                                variant="ghost"
-                                size="normal"
-                                style={control()}
-                                class="min-w-0 max-w-[320px] text-13-regular text-text-base group"
-                                data-action="prompt-model"
-                              >
-                                <Show when={props.controls.model.selection.current()?.provider?.id}>
-                                  <ProviderIcon
-                                    id={props.controls.model.selection.current()?.provider?.id ?? ""}
-                                    class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
-                                    style={{ "will-change": "opacity", transform: "translateZ(0)" }}
-                                  />
-                                </Show>
-                                <span class="truncate">
-                                  {props.controls.model.selection.current()?.name ??
-                                    language.t("dialog.model.select.title")}
-                                </span>
-                                <Icon name="chevron-down" size="small" class="shrink-0" />
-                              </Button>
-                            )}
-                            onClose={restoreFocus}
-                          />
-                        </TooltipKeybind>
-                      </Show>
+                        <span class="truncate">Fryn AI</span>
+                      </Button>
                     </div>
-                    <Show when={showVariantControl()}>
-                      <div
-                        data-component="prompt-variant-control"
-                        classList={{ "animate-in fade-in duration-300": providersShouldFadeIn() }}
-                      >
-                        <TooltipKeybind
-                          placement="top"
-                          gutter={4}
-                          title={language.t("command.model.variant.cycle")}
-                          keybind={command.keybind("model.variant.cycle")}
-                        >
-                          <Select
-                            size="normal"
-                            options={variants()}
-                            current={props.controls.model.selection.variant.current() ?? "default"}
-                            label={(x) => (x === "default" ? language.t("common.default") : x)}
-                            onSelect={(value) => {
-                              props.controls.model.selection.variant.set(value === "default" ? undefined : value)
-                              restoreFocus()
-                            }}
-                            class="capitalize max-w-[160px] text-text-base"
-                            valueClass="truncate text-13-regular text-text-base"
-                            triggerStyle={control()}
-                            triggerProps={{ "data-action": "prompt-model-variant" }}
-                            variant="ghost"
-                          />
-                        </TooltipKeybind>
-                      </div>
-                    </Show>
                   </Show>
                 </Show>
               </div>

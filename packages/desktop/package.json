@@ -1,13 +1,12 @@
 {
   "name": "@opencode-ai/desktop",
   "private": true,
-  "version": "1.18.15",
+  "version": "1.1.0",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://opencode.ai",
+  "homepage": "",
   "author": {
-    "name": "OpenCode",
-    "email": "hello@opencode.ai"
+    "name": "Fryn"
   },
   "scripts": {
     "typecheck": "tsgo -b",
@@ -18,7 +17,7 @@
     "preview": "electron-vite preview",
     "package": "electron-builder --config electron-builder.config.ts",
     "package:mac": "electron-builder --mac --config electron-builder.config.ts",
-    "package:win": "electron-builder --win --config electron-builder.config.ts",
+    "package:win": "electron-builder --win --x64",
     "package:linux": "electron-builder --linux --config electron-builder.config.ts",
     "native:build": "bun install --cwd native"
   },
@@ -72,5 +71,6 @@
     "@parcel/watcher-linux-x64-musl": "2.5.1",
     "@parcel/watcher-win32-arm64": "2.5.1",
     "@parcel/watcher-win32-x64": "2.5.1"
-  }
+  },
+  "description": "Fryn desktop AI development assistant"
 }

@@ -1,48 +1,50 @@
-# Fryn Backend — 12 licenças + roteamento free-first
+# Fryn Backend — licenças e modelos especializados
 
-Gateway privado do Fryn. Ele mantém a credencial real de IA fora do `.exe`, autoriza no máximo 12 instalações e encaminha as chamadas do app por uma cadeia automática de modelos.
+Gateway privado do Fryn. Mantém as credenciais reais fora do `.exe`, autoriza até 12 instalações por padrão e expõe somente modelos lógicos com a marca Fryn.
 
-## Experiência do funcionário
+## Modelos visíveis
 
-O funcionário recebe somente `Fryn-Setup.exe`, instala e abre. A primeira execução registra automaticamente uma das 12 vagas. No aplicativo existe apenas **Fryn AI** e o modelo lógico `assistant`: não há seletor de modelo, chave, provedor ou nome de fornecedor.
+| ID lógico | Nome | Provedor padrão | Disponibilidade |
+| --- | --- | --- | --- |
+| `fryn-code` | Fryn Code | North Mini Code via OpenRouter | Sempre |
+| `fryn-fast` | Fryn Fast | GPT-OSS 120B via Groq | Com `GROQ_API_KEY` |
+| `fryn-expert` | Fryn Expert | Laguna M.1 via OpenRouter | Sempre |
+| `fryn-plan` | Fryn Plan | Nemotron 3 Ultra via OpenRouter | Sempre |
+| `fryn-vision` | Fryn Vision | Gemini Flash | Com `GEMINI_API_KEY` |
 
-## Roteamento padrão
+O modelo legado `assistant` continua aceito e é encaminhado para `FRYN_DEFAULT_MODEL`, permitindo atualizar o backend antes de substituir todas as instalações.
 
-A cadeia padrão é:
+Cada escolha usa uma rota direta. Somente `fryn-code` pode tentar o fallback pago configurado quando sua rota principal retorna indisponibilidade ou rate limit. Os demais modos não tentam modelos diferentes silenciosamente.
 
-1. `cohere/north-mini-code:free`
-2. `qwen/qwen3-coder:free`
-3. `openrouter/free`
-4. `qwen/qwen3.7-flash` — fallback pago opcional
-
-O backend envia os modelos gratuitos em lotes de no máximo 3, respeitando o limite atual do array `models` do OpenRouter. Se todos os gratuitos falharem por indisponibilidade/rate limit, o Fryn faz uma nova chamada separada para o fallback pago opcional. O nome concreto do modelo retornado é sanitizado antes de chegar ao desktop.
-
-Você pode trocar os modelos sem recompilar o `.exe` usando `FRYN_FREE_MODELS` e `FRYN_PAID_FALLBACK_MODEL`.
-
-## Configuração recomendada
+## Configuração
 
 1. Copie `.env.example` para `.env`.
 2. Preencha `OPENROUTER_API_KEY` e um `FRYN_ADMIN_TOKEN` longo e aleatório.
-3. Mantenha `FRYN_MAX_LICENSES=12`.
-4. Para máxima disponibilidade no expediente, mantenha `FRYN_ENABLE_PAID_FALLBACK=true` e saldo disponível no OpenRouter. Se não quiser nenhum gasto, use `false` — quando todos os gratuitos estiverem indisponíveis/limitados, a chamada falhará em vez de gerar cobrança.
-5. Rode `docker compose up -d --build` ou `node server.mjs` com as mesmas variáveis.
-6. Publique em HTTPS e use a URL na variável de build `FRYN_BACKEND_URL` do desktop.
-7. Abra `https://SEU_BACKEND/admin` para ver, revogar e liberar as 12 instalações.
+3. Adicione `GROQ_API_KEY` para habilitar Fryn Fast.
+4. Adicione `GEMINI_API_KEY` para habilitar Fryn Vision.
+5. Rode `docker compose up -d --build` ou `node server.mjs`.
+6. Publique em HTTPS e use a URL como `FRYN_BACKEND_URL` no build do desktop.
+
+As chaves opcionais controlam também a lista retornada por `/v1/models`: um modo nunca aparece quando seu provedor não está configurado.
+
+## Desempenho
+
+`FRYN_UPSTREAM_TIMEOUT_SECONDS` limita quanto uma tentativa pode esperar. O padrão é 45 segundos. O endpoint administrativo `GET /admin/api/metrics` retorna solicitações, sucessos, falhas e latência por modelo lógico desde o último início do servidor.
 
 ## Privacidade
 
-`FRYN_DATA_COLLECTION=allow` prioriza disponibilidade gratuita. Para código corporativo sensível, considere:
+`FRYN_DATA_COLLECTION=allow` prioriza disponibilidade nas rotas gratuitas do OpenRouter. Para código corporativo sensível, use:
 
 ```env
 FRYN_DATA_COLLECTION=deny
 FRYN_REQUIRE_ZDR=true
 ```
 
-Isso restringe os endpoints elegíveis e pode fazer o Fryn chegar ao fallback pago mais cedo ou não encontrar um endpoint gratuito compatível.
+Rotas gratuitas podem não aceitar Zero Data Retention. Verifique os termos de cada provedor antes de oferecer o serviço a clientes.
 
-## Administração por terminal
+## Administração
 
-Com `FRYN_BACKEND_URL` e `FRYN_ADMIN_TOKEN` definidos:
+Abra `https://SEU_BACKEND/admin` para gerenciar instalações. Pelo terminal, com `FRYN_BACKEND_URL` e `FRYN_ADMIN_TOKEN` definidos:
 
 ```bash
 node admin-cli.mjs list
@@ -51,12 +53,9 @@ node admin-cli.mjs restore INSTALLATION_ID
 node admin-cli.mjs delete INSTALLATION_ID
 ```
 
-`delete` invalida a instalação e libera a vaga para um novo computador.
-
 ## Segurança
 
-- A chave real de IA existe somente nas variáveis de ambiente deste servidor.
-- O `.exe` recebe apenas um token de licença revogável por instalação.
-- Use HTTPS antes de distribuir o app fora de uma rede local controlada.
-- Não coloque `OPENROUTER_API_KEY` em arquivos enviados aos funcionários.
-- Defina limites de gasto/guardrails na conta OpenRouter se habilitar o fallback pago.
+- Nunca coloque chaves dos provedores no instalador.
+- Use HTTPS.
+- Defina limites de gasto nos provedores pagos.
+- Mantenha confirmação explícita antes de e-mail, calendário ou qualquer ação externa.

@@ -8,6 +8,7 @@ const PORT = integerEnv("PORT", 8787, 1, 65535)
 const MAX_LICENSES = integerEnv("FRYN_MAX_LICENSES", 12, 1, 1000)
 const REQUESTS_PER_MINUTE = integerEnv("FRYN_REQUESTS_PER_MINUTE", 30, 1, 10000)
 const MAX_BODY_BYTES = integerEnv("FRYN_MAX_BODY_MB", 50, 1, 500) * 1024 * 1024
+const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 600) * 1000
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
 const OPENROUTER_API_KEY = requiredEnv("OPENROUTER_API_KEY")
@@ -21,17 +22,61 @@ const ENABLE_PAID_FALLBACK = booleanEnv("FRYN_ENABLE_PAID_FALLBACK", true)
 const PAID_FALLBACK_MODEL = process.env.FRYN_PAID_FALLBACK_MODEL?.trim() || "qwen/qwen3.7-flash"
 const DATA_COLLECTION = enumEnv("FRYN_DATA_COLLECTION", "allow", ["allow", "deny"])
 const REQUIRE_ZDR = booleanEnv("FRYN_REQUIRE_ZDR", false)
-// OpenRouter currently accepts at most 3 entries in the `models` fallback array.
-// Keep free models in batches of three and perform the optional paid fallback as
-// a separate backend retry so employees still see one logical "Fryn AI" model.
-const MAX_UPSTREAM_MODELS_PER_REQUEST = 3
-const FREE_MODEL_BATCHES = []
-for (let i = 0; i < FREE_MODELS.length; i += MAX_UPSTREAM_MODELS_PER_REQUEST) {
-  FREE_MODEL_BATCHES.push(FREE_MODELS.slice(i, i + MAX_UPSTREAM_MODELS_PER_REQUEST))
+const GROQ_API_KEY = process.env.GROQ_API_KEY?.trim() || ""
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() || ""
+const LOGICAL_MODELS = [
+  {
+    id: "fryn-code",
+    name: "Fryn Code",
+    provider: "openrouter",
+    model: process.env.FRYN_CODE_MODEL?.trim() || "cohere/north-mini-code:free",
+  },
+  ...(GROQ_API_KEY
+    ? [
+        {
+          id: "fryn-fast",
+          name: "Fryn Fast",
+          provider: "groq",
+          model: process.env.FRYN_FAST_MODEL?.trim() || "openai/gpt-oss-120b",
+        },
+      ]
+    : []),
+  {
+    id: "fryn-expert",
+    name: "Fryn Expert",
+    provider: "openrouter",
+    model: process.env.FRYN_EXPERT_MODEL?.trim() || "poolside/laguna-m1:free",
+  },
+  {
+    id: "fryn-plan",
+    name: "Fryn Plan",
+    provider: "openrouter",
+    model: process.env.FRYN_PLAN_MODEL?.trim() || "nvidia/nemotron-3-ultra-550b-a55b:free",
+  },
+  ...(GEMINI_API_KEY
+    ? [
+        {
+          id: "fryn-vision",
+          name: "Fryn Vision",
+          provider: "gemini",
+          model: process.env.FRYN_VISION_MODEL?.trim() || "gemini-3.6-flash",
+        },
+      ]
+    : []),
+]
+const DEFAULT_LOGICAL_MODEL = process.env.FRYN_DEFAULT_MODEL?.trim() || "fryn-code"
+if (!LOGICAL_MODELS.some((item) => item.id === DEFAULT_LOGICAL_MODEL)) {
+  console.error(`[Fryn] FRYN_DEFAULT_MODEL nao esta habilitado: ${DEFAULT_LOGICAL_MODEL}`)
+  process.exit(1)
 }
-const KNOWN_MODELS = [...FREE_MODELS, ...(ENABLE_PAID_FALLBACK ? [PAID_FALLBACK_MODEL] : [])]
+const KNOWN_MODELS = [
+  ...FREE_MODELS,
+  ...LOGICAL_MODELS.map((item) => item.model),
+  ...(ENABLE_PAID_FALLBACK ? [PAID_FALLBACK_MODEL] : []),
+]
 
 const rateWindows = new Map()
+const routeMetrics = new Map(LOGICAL_MODELS.map((item) => [item.id, { requests: 0, successes: 0, failures: 0, totalLatencyMs: 0, lastLatencyMs: 0, lastStatus: null }]))
 let writeChain = Promise.resolve()
 let state = await loadState()
 
@@ -285,11 +330,15 @@ async function status(req, res) {
 
 function sanitizeUpstream(value) {
   let text = String(value)
-  for (const model of KNOWN_MODELS) text = text.replaceAll(model, "assistant")
+  for (const model of KNOWN_MODELS) text = text.replaceAll(model, "Fryn AI")
   return text
-    .replace(/cohere\/north-mini-code(?::free)?/gi, "assistant")
-    .replace(/qwen\/[A-Za-z0-9_.:-]+/gi, "assistant")
-    .replace(/openrouter\/free/gi, "assistant")
+    .replace(/cohere\/north-mini-code(?::free)?/gi, "Fryn AI")
+    .replace(/qwen\/[A-Za-z0-9_.:-]+/gi, "Fryn AI")
+    .replace(/openrouter\/free/gi, "Fryn AI")
+    .replace(/poolside\/[A-Za-z0-9_.:-]+/gi, "Fryn AI")
+    .replace(/nvidia\/[A-Za-z0-9_.:-]+/gi, "Fryn AI")
+    .replace(/openai\/gpt-oss-[A-Za-z0-9_.:-]+/gi, "Fryn AI")
+    .replace(/gemini-[A-Za-z0-9_.:-]+/gi, "Fryn AI")
     .replace(/north[ -]?mini[ -]?code/gi, "Fryn AI")
     .replace(/qwen(?:3(?:\.[0-9]+)?(?:[ -]?(?:coder|flash|plus))?)?/gi, "Fryn AI")
     .replace(/cohere/gi, "Fryn")
@@ -302,7 +351,10 @@ async function proxyAI(req, res, path) {
   if (!rateAllowed(license)) return json(res, 429, { error: "Fryn temporariamente ocupado. Tente novamente em instantes." })
 
   if (req.method === "GET" && path === "/v1/models") {
-    return json(res, 200, { object: "list", data: [{ id: "assistant", object: "model", owned_by: "fryn" }] })
+    return json(res, 200, {
+      object: "list",
+      data: LOGICAL_MODELS.map((item) => ({ id: item.id, name: item.name, object: "model", owned_by: "fryn" })),
+    })
   }
 
   if (req.method !== "POST") return json(res, 405, { error: "method_not_allowed" })
@@ -315,84 +367,102 @@ async function proxyAI(req, res, path) {
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "invalid_request" })
   const upstreamPath = path.slice(3) || "/chat/completions"
-  const target = `${UPSTREAM_BASE_URL}${upstreamPath}`
-  const provider = {
-    ...(body.provider && typeof body.provider === "object" && !Array.isArray(body.provider) ? body.provider : {}),
-    data_collection: DATA_COLLECTION,
-    ...(REQUIRE_ZDR ? { zdr: true } : {}),
-  }
-
-  // The desktop only knows the logical model `assistant`. OpenRouter currently
-  // limits its `models` fallback array to 3 entries, so Fryn sends free models
-  // in batches of up to three. If every free batch fails with a retryable
-  // upstream error, Fryn makes one separate request to the optional paid model.
+  const requestedModel = body.model === "assistant" ? DEFAULT_LOGICAL_MODEL : body.model || DEFAULT_LOGICAL_MODEL
+  const route = LOGICAL_MODELS.find((item) => item.id === requestedModel)
+  if (!route) return json(res, 400, { error: "Modelo Fryn invalido." })
+  const upstream = route.provider === "groq"
+    ? { baseUrl: normalizeBaseUrl(process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1"), apiKey: GROQ_API_KEY }
+    : route.provider === "gemini"
+      ? { baseUrl: normalizeBaseUrl(process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai"), apiKey: GEMINI_API_KEY }
+      : { baseUrl: UPSTREAM_BASE_URL, apiKey: OPENROUTER_API_KEY }
+  const target = `${upstream.baseUrl}${upstreamPath}`
+  const startedAt = Date.now()
+  const metric = routeMetrics.get(route.id)
+  metric.requests++
   const attempts = []
-  if (upstreamPath === "/chat/completions") {
-    for (const batch of FREE_MODEL_BATCHES) {
-      const attempt = { ...body, provider }
-      delete attempt.model
-      attempt.models = batch
-      attempts.push({ kind: "free", body: attempt })
-    }
-    if (ENABLE_PAID_FALLBACK) {
-      const attempt = { ...body, provider, model: PAID_FALLBACK_MODEL }
-      delete attempt.models
-      attempts.push({ kind: "paid", body: attempt })
+  const attemptBody = { ...body, model: route.model }
+  delete attemptBody.models
+  if (route.provider === "openrouter") {
+    attemptBody.provider = {
+      ...(body.provider && typeof body.provider === "object" && !Array.isArray(body.provider) ? body.provider : {}),
+      data_collection: DATA_COLLECTION,
+      ...(REQUIRE_ZDR ? { zdr: true } : {}),
     }
   } else {
-    const attempt = { ...body, provider, model: FREE_MODELS[0] }
-    delete attempt.models
-    attempts.push({ kind: "free", body: attempt })
+    delete attemptBody.provider
+  }
+  attempts.push({ kind: route.id, body: attemptBody, apiKey: upstream.apiKey })
+
+  if (route.id === "fryn-code" && ENABLE_PAID_FALLBACK && route.model !== PAID_FALLBACK_MODEL) {
+    const fallback = { ...attemptBody, model: PAID_FALLBACK_MODEL }
+    fallback.provider = {
+      ...(body.provider && typeof body.provider === "object" && !Array.isArray(body.provider) ? body.provider : {}),
+      data_collection: DATA_COLLECTION,
+      ...(REQUIRE_ZDR ? { zdr: true } : {}),
+    }
+    attempts.push({ kind: "fryn-code-fallback", body: fallback, apiKey: OPENROUTER_API_KEY, target: `${UPSTREAM_BASE_URL}${upstreamPath}` })
   }
 
   function retryableStatus(status) {
     return status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
   }
 
-  let upstream
+  let upstreamResponse
   for (let index = 0; index < attempts.length; index++) {
     const attempt = attempts[index]
     try {
-      upstream = await fetch(target, {
+      upstreamResponse = await fetch(attempt.target || target, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          authorization: `Bearer ${attempt.apiKey}`,
           "content-type": "application/json",
           "x-title": "Fryn",
           ...(process.env.FRYN_HTTP_REFERER ? { "http-referer": process.env.FRYN_HTTP_REFERER } : {}),
         },
         body: JSON.stringify(attempt.body),
-        signal: AbortSignal.timeout(10 * 60_000),
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       })
     } catch (error) {
       console.error(`[Fryn] Falha no upstream (${attempt.kind}):`, error?.message || error)
       if (index < attempts.length - 1) continue
+      metric.lastLatencyMs = Date.now() - startedAt
+      metric.totalLatencyMs += metric.lastLatencyMs
+      metric.lastStatus = 502
+      metric.failures++
       return json(res, 502, { error: "Fryn AI indisponivel no momento." })
     }
 
-    if (upstream.ok || index === attempts.length - 1 || !retryableStatus(upstream.status)) break
-    console.warn(`[Fryn] Rota ${attempt.kind} indisponivel (HTTP ${upstream.status}); tentando proxima rota.`)
+    if (upstreamResponse.ok || index === attempts.length - 1 || !retryableStatus(upstreamResponse.status)) break
+    console.warn(`[Fryn] Rota ${attempt.kind} indisponivel (HTTP ${upstreamResponse.status}); tentando proxima rota.`)
     try {
-      await upstream.body?.cancel()
+      await upstreamResponse.body?.cancel()
     } catch {}
-    upstream = undefined
+    upstreamResponse = undefined
   }
 
-  if (!upstream) return json(res, 502, { error: "Fryn AI indisponivel no momento." })
+  metric.lastLatencyMs = Date.now() - startedAt
+  metric.totalLatencyMs += metric.lastLatencyMs
+  metric.lastStatus = upstreamResponse?.status || 502
+  if (!upstreamResponse) {
+    metric.failures++
+    return json(res, 502, { error: "Fryn AI indisponivel no momento." })
+  }
+  if (upstreamResponse.ok) metric.successes++
+  else metric.failures++
 
   license.lastSeenAt = new Date().toISOString()
   void persistState()
 
-  const contentType = upstream.headers.get("content-type") || "application/json; charset=utf-8"
-  res.writeHead(upstream.status, {
+  const contentType = upstreamResponse.headers.get("content-type") || "application/json; charset=utf-8"
+  res.writeHead(upstreamResponse.status, {
     "content-type": contentType,
     "cache-control": "no-store",
     ...(contentType.includes("text/event-stream") ? { connection: "keep-alive", "x-accel-buffering": "no" } : {}),
   })
 
-  if (!upstream.body) return res.end()
+  if (!upstreamResponse.body) return res.end()
 
-  const reader = upstream.body.getReader()
+  const reader = upstreamResponse.body.getReader()
   const decoder = new TextDecoder()
   const keep = 128
   let carry = ""
@@ -424,6 +494,24 @@ async function adminApi(req, res, url) {
       max: MAX_LICENSES,
       active: activeLicenses().length,
       licenses: state.licenses.slice().sort((a, b) => a.slot - b.slot).map(publicLicense),
+    })
+  }
+
+  if (req.method === "GET" && url.pathname === "/admin/api/metrics") {
+    return json(res, 200, {
+      models: LOGICAL_MODELS.map((item) => {
+        const metric = routeMetrics.get(item.id)
+        return {
+          id: item.id,
+          name: item.name,
+          requests: metric.requests,
+          successes: metric.successes,
+          failures: metric.failures,
+          averageLatencyMs: metric.requests ? Math.round(metric.totalLatencyMs / metric.requests) : 0,
+          lastLatencyMs: metric.lastLatencyMs,
+          lastStatus: metric.lastStatus,
+        }
+      }),
     })
   }
 
@@ -483,7 +571,9 @@ const server = createServer(async (req, res) => {
         activeLicenses: activeLicenses().length,
         maxLicenses: MAX_LICENSES,
         routing: {
-          freeFirst: true,
+          mode: "direct",
+          defaultModel: DEFAULT_LOGICAL_MODEL,
+          models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: ENABLE_PAID_FALLBACK,
           privacy: REQUIRE_ZDR ? "zdr" : DATA_COLLECTION,
         },
@@ -501,11 +591,13 @@ const server = createServer(async (req, res) => {
   }
 })
 
+export { server }
+
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[Fryn] Backend ativo em http://0.0.0.0:${PORT}`)
   console.log(`[Fryn] ${activeLicenses().length}/${MAX_LICENSES} instalacoes ativas | host ${hostname()}`)
   console.log(
-    `[Fryn] Roteamento free-first ativo | ${FREE_MODELS.length} rotas gratuitas | fallback pago ${ENABLE_PAID_FALLBACK ? "ativo" : "desativado"}`,
+    `[Fryn] Roteamento direto ativo | ${LOGICAL_MODELS.map((item) => item.id).join(", ")} | fallback pago ${ENABLE_PAID_FALLBACK ? "ativo" : "desativado"}`,
   )
   console.log(`[Fryn] Privacidade upstream: ${REQUIRE_ZDR ? "ZDR obrigatorio" : `data_collection=${DATA_COLLECTION}`}`)
 })

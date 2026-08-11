@@ -15,7 +15,7 @@ A cadeia padrão é:
 3. `openrouter/free`
 4. `qwen/qwen3.7-flash` — fallback pago opcional
 
-O backend envia a lista em ordem de prioridade através do recurso oficial de **model fallbacks** do OpenRouter. Se o primeiro endpoint falhar, estiver indisponível ou sofrer rate limit, o OpenRouter tenta o próximo. O nome concreto do modelo retornado é sanitizado antes de chegar ao desktop.
+O backend envia os modelos gratuitos em lotes de no máximo 3, respeitando o limite atual do array `models` do OpenRouter. Se todos os gratuitos falharem por indisponibilidade/rate limit, o Fryn faz uma nova chamada separada para o fallback pago opcional. O nome concreto do modelo retornado é sanitizado antes de chegar ao desktop.
 
 Você pode trocar os modelos sem recompilar o `.exe` usando `FRYN_FREE_MODELS` e `FRYN_PAID_FALLBACK_MODEL`.
 

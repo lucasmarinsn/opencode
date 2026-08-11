@@ -7,13 +7,23 @@ import assert from "node:assert/strict"
 
 const upstreamPort = 18991
 const backendPort = 18992
-const expected = ["cohere/north-mini-code:free", "qwen/qwen3-coder:free", "openrouter/free", "qwen/qwen3.7-flash"]
+const expectedFree = ["cohere/north-mini-code:free", "qwen/qwen3-coder:free", "openrouter/free"]
+const expectedPaid = "qwen/qwen3.7-flash"
 let lastBody
+const seenBodies = []
 
 const upstream = createServer(async (req, res) => {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
   lastBody = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")
+  seenBodies.push(lastBody)
+  const forcePaid = lastBody.messages?.some((message) => message?.content === "force-paid")
+  if (forcePaid && Array.isArray(lastBody.models)) {
+    const data = JSON.stringify({ error: { message: "free routes exhausted" } })
+    res.writeHead(429, { "content-type": "application/json", "content-length": Buffer.byteLength(data) })
+    res.end(data)
+    return
+  }
   if (lastBody.stream) {
     res.writeHead(200, { "content-type": "text/event-stream" })
     res.write(`data: ${JSON.stringify({ id: "x", model: "cohere/north-mini-code:free", choices: [{ delta: { content: "ok" } }] })}\n\n`)
@@ -97,11 +107,28 @@ try {
   })
   const text = await request.text()
   assert.equal(request.status, 200)
-  assert.deepEqual(lastBody.models, expected)
+  assert.deepEqual(lastBody.models, expectedFree)
   assert.equal("model" in lastBody, false)
   assert.equal(lastBody.provider.data_collection, "allow")
   assert.ok(text.includes('"model":"assistant"'))
   assert.ok(!/cohere|qwen|openrouter/i.test(text))
+
+  const beforePaid = seenBodies.length
+  const paidRequest = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ model: "assistant", messages: [{ role: "user", content: "force-paid" }] }),
+  })
+  const paidText = await paidRequest.text()
+  assert.equal(paidRequest.status, 200)
+  const paidAttempts = seenBodies.slice(beforePaid)
+  assert.equal(paidAttempts.length, 2)
+  assert.deepEqual(paidAttempts[0].models, expectedFree)
+  assert.equal("model" in paidAttempts[0], false)
+  assert.equal(paidAttempts[1].model, expectedPaid)
+  assert.equal("models" in paidAttempts[1], false)
+  assert.ok(paidText.includes('"model":"assistant"'))
+  assert.ok(!/cohere|qwen|openrouter/i.test(paidText))
 
   const stream = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
     method: "POST",

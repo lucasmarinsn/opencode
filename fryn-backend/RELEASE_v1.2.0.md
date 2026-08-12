@@ -13,6 +13,10 @@
 - teste multiplataforma sem subprocesso;
 - plano técnico da integração Outlook com OAuth PKCE e confirmação obrigatória.
 
+## Desktop 1.2
+
+O seletor de modelos é definido no desktop. Para exibir os cinco modos, é necessário gerar e instalar o Fryn 1.2. O deploy isolado do backend mantém compatibilidade com o executável antigo, mas ele continuará mostrando somente Fryn AI.
+
 ## Configuração necessária no Railway
 
 Obrigatória para as rotas já existentes:

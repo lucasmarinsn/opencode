@@ -59,6 +59,13 @@ export async function preferAppEnv(userDataPath: string) {
     enabled_providers: ["fryn"],
     model: "fryn/assistant",
     small_model: "fryn/assistant",
+    compaction: {
+      auto: true,
+      prune: true,
+      reserved: 100000,
+      tail_turns: 2,
+      preserve_recent_tokens: 8000,
+    },
     provider: {
       fryn: {
         name: "Fryn AI",
@@ -78,8 +85,8 @@ export async function preferAppEnv(userDataPath: string) {
             temperature: true,
             tool_call: true,
             cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
-            limit: { context: 131072, output: 65536 },
-            modalities: { input: ["text"], output: ["text"] },
+            limit: { context: 1048576, input: 900000, output: 65536 },
+            modalities: { input: ["text", "image"], output: ["text"] },
           },
         },
       },

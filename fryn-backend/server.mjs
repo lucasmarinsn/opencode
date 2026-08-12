@@ -12,14 +12,16 @@ const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 6
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
 const ADMIN_TOKEN = requiredEnv("FRYN_ADMIN_TOKEN")
-const GROQ_API_KEY = requiredEnv("GROQ_API_KEY")
-const UPSTREAM_BASE_URL = normalizeBaseUrl(process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1")
+const GEMINI_API_KEY = requiredEnv("GEMINI_API_KEY")
+const UPSTREAM_BASE_URL = normalizeBaseUrl(
+  process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai",
+)
 const LOGICAL_MODELS = [
   {
     id: "assistant",
     name: "Fryn AI",
-    provider: "groq",
-    model: process.env.FRYN_MODEL?.trim() || "openai/gpt-oss-120b",
+    provider: "google",
+    model: "gemini-3.6-flash",
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
@@ -53,7 +55,7 @@ function integerEnv(name, fallback, min, max) {
 
 function normalizeBaseUrl(value) {
   const url = new URL(value)
-  if (!/^https?:$/.test(url.protocol)) throw new Error("GROQ_BASE_URL precisa usar http ou https")
+  if (!/^https?:$/.test(url.protocol)) throw new Error("GEMINI_BASE_URL precisa usar http ou https")
   return url.toString().replace(/\/$/, "")
 }
 
@@ -299,7 +301,7 @@ async function proxyAI(req, res, path) {
   const attemptBody = { ...body, model: route.model }
   delete attemptBody.models
   delete attemptBody.provider
-  attempts.push({ kind: route.id, body: attemptBody, apiKey: GROQ_API_KEY })
+  attempts.push({ kind: route.id, body: attemptBody, apiKey: GEMINI_API_KEY })
 
   function retryableStatus(status) {
     return status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
@@ -473,7 +475,7 @@ const server = createServer(async (req, res) => {
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: false,
-          provider: "groq-free-tier",
+          provider: "google-gemini-free-tier",
         },
       })
     }
@@ -497,5 +499,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log("[Fryn] Provedor upstream: Groq")
+  console.log("[Fryn] Provedor upstream: Google Gemini")
 })

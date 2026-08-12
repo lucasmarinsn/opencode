@@ -1,8 +1,13 @@
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
+import { Icon } from "@opencode-ai/ui/v2/icon"
+import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
+import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 import type { ReferenceInfo } from "@opencode-ai/sdk/v2/client"
 import { createEffect, createMemo, on, Show } from "solid-js"
+import { ModelSelectorPopoverV2 } from "@/components/dialog-select-model"
 import type { PromptInputProps } from "@/components/prompt-input/contracts"
 import { normalizePromptHistoryEntry, promptLength, type PromptHistoryComment } from "@/components/prompt-input/history"
 import { createPersistedPromptInputHistory } from "@/components/prompt-input/history-store"
@@ -40,6 +45,7 @@ export type PromptInputV2ComposerController = PromptInputV2Interaction & {
 
 export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   const command = useCommand()
+  const language = useLanguage()
 
   return (
     <div class="flex flex-col gap-3">
@@ -47,21 +53,19 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
         controller={props.controller}
         borderUnderlay={props.borderUnderlay}
         class={props.class}
-        variantControlVisible={false}
+        variantControlVisible={!props.controller.model.loading}
         attachKeybind={command.keybindParts("file.attach")}
         attachShortcut={command.keybind("file.attach")}
         modelControl={
-          <Show when={!props.controller.model.loading}>
-            <ButtonV2
-              data-action="prompt-model"
-              variant="ghost-muted"
-              size="normal"
-              class="min-w-0 max-w-[220px] justify-start ![font-weight:440]"
-              style={{ height: "28px" }}
-            >
-              <span class="truncate leading-4">Fryn AI</span>
-            </ButtonV2>
-          </Show>
+          <PromptInputV2ModelControl
+            loading={props.controller.model.loading}
+            title={language.t("command.model.choose")}
+            keybind={command.keybindParts("model.choose")}
+            model={props.controller.model.selection}
+            providerID={props.controller.model.selection.current()?.provider?.id}
+            modelName={props.controller.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
+            onClose={props.controller.restoreFocus}
+          />
         }
       />
     </div>
@@ -456,6 +460,69 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
   )
 
   return controller as PromptInputV2ComposerController
+}
+
+function PromptInputV2ModelControl(props: {
+  loading: boolean
+  title: string
+  keybind: string[]
+  model: PromptInputV2ComposerController["model"]["selection"]
+  providerID?: string
+  modelName: string
+  onClose: () => void
+}) {
+  const shouldAnimate = createMemo<boolean>((previous) => previous ?? props.loading)
+  const content = () => (
+    <>
+      <Show when={props.providerID}>
+        {(providerID) => (
+          <ProviderIcon
+            id={providerID()}
+            class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
+            style={{ "will-change": "opacity", transform: "translateZ(0)" }}
+          />
+        )}
+      </Show>
+      <span class="truncate leading-4">{props.modelName}</span>
+      <span class="-ml-0.5 -mr-1 flex shrink-0">
+        <Icon name="chevron-down" />
+      </span>
+    </>
+  )
+
+  return (
+    <Show when={!props.loading}>
+      <TooltipV2
+        placement="top"
+        gutter={4}
+        value={
+          <>
+            {props.title}
+            <KeybindV2 keys={props.keybind} variant="neutral" />
+          </>
+        }
+      >
+        <ModelSelectorPopoverV2
+          model={props.model}
+          trigger={(triggerProps) => (
+            <ButtonV2
+              {...triggerProps}
+              variant="ghost-muted"
+              size="normal"
+              style={{ height: "28px" }}
+              class="min-w-0 max-w-[220px] justify-start ![font-weight:440] group"
+              classList={{ "animate-in fade-in": shouldAnimate() }}
+              data-action="prompt-model"
+              data-control-type="popover"
+            >
+              {content()}
+            </ButtonV2>
+          )}
+          onClose={props.onClose}
+        />
+      </TooltipV2>
+    </Show>
+  )
 }
 
 function openComment(

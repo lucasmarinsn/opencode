@@ -1,9 +1,9 @@
 {
   "name": "fryn-backend",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
-  "description": "Private Fryn licensing and free-first AI gateway for up to 12 desktop installations",
+  "description": "Private Fryn licensing and single-model Groq gateway for up to 12 desktop installations",
   "scripts": {
     "start": "node server.mjs",
     "admin": "node admin-cli.mjs",

@@ -5,7 +5,7 @@ O Fryn agora usa um backend privado para ativar automaticamente no máximo **12 
 ## Antes de gerar o instalador
 
 1. Suba a pasta `fryn-backend/` em um servidor seu (preferencialmente HTTPS).
-2. No servidor, configure `OPENROUTER_API_KEY`, `FRYN_ADMIN_TOKEN` e `FRYN_MAX_LICENSES=12`.
+2. No servidor, configure `GROQ_API_KEY`, `FRYN_ADMIN_TOKEN`, `FRYN_MODEL=openai/gpt-oss-120b` e `FRYN_MAX_LICENSES=12`.
 3. Confirme que `https://SEU_BACKEND/health` responde com `ok: true`.
 4. No GitHub, abra **Settings → Secrets and variables → Actions → Variables**.
 5. Crie a variável de repositório `FRYN_BACKEND_URL` com a URL do backend, sem `/v1` no final. Exemplo: `https://fryn-api.seudominio.com`.

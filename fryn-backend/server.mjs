@@ -11,69 +11,20 @@ const MAX_BODY_BYTES = integerEnv("FRYN_MAX_BODY_MB", 50, 1, 500) * 1024 * 1024
 const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 600) * 1000
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
-const OPENROUTER_API_KEY = requiredEnv("OPENROUTER_API_KEY")
 const ADMIN_TOKEN = requiredEnv("FRYN_ADMIN_TOKEN")
-const UPSTREAM_BASE_URL = normalizeBaseUrl(process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1")
-const FREE_MODELS = modelListEnv(
-  "FRYN_FREE_MODELS",
-  ["cohere/north-mini-code:free", "qwen/qwen3-coder:free", "openrouter/free"],
-)
-const ENABLE_PAID_FALLBACK = booleanEnv("FRYN_ENABLE_PAID_FALLBACK", true)
-const PAID_FALLBACK_MODEL = process.env.FRYN_PAID_FALLBACK_MODEL?.trim() || "qwen/qwen3.7-flash"
-const DATA_COLLECTION = enumEnv("FRYN_DATA_COLLECTION", "allow", ["allow", "deny"])
-const REQUIRE_ZDR = booleanEnv("FRYN_REQUIRE_ZDR", false)
-const GROQ_API_KEY = process.env.GROQ_API_KEY?.trim() || ""
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() || ""
+const GROQ_API_KEY = requiredEnv("GROQ_API_KEY")
+const UPSTREAM_BASE_URL = normalizeBaseUrl(process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1")
 const LOGICAL_MODELS = [
   {
-    id: "fryn-code",
-    name: "Fryn Code",
-    provider: "openrouter",
-    model: process.env.FRYN_CODE_MODEL?.trim() || "cohere/north-mini-code:free",
+    id: "assistant",
+    name: "Fryn AI",
+    provider: "groq",
+    model: process.env.FRYN_MODEL?.trim() || "openai/gpt-oss-120b",
   },
-  ...(GROQ_API_KEY
-    ? [
-        {
-          id: "fryn-fast",
-          name: "Fryn Fast",
-          provider: "groq",
-          model: process.env.FRYN_FAST_MODEL?.trim() || "openai/gpt-oss-120b",
-        },
-      ]
-    : []),
-  {
-    id: "fryn-expert",
-    name: "Fryn Expert",
-    provider: "openrouter",
-    model: process.env.FRYN_EXPERT_MODEL?.trim() || "poolside/laguna-m1:free",
-  },
-  {
-    id: "fryn-plan",
-    name: "Fryn Plan",
-    provider: "openrouter",
-    model: process.env.FRYN_PLAN_MODEL?.trim() || "nvidia/nemotron-3-ultra-550b-a55b:free",
-  },
-  ...(GEMINI_API_KEY
-    ? [
-        {
-          id: "fryn-vision",
-          name: "Fryn Vision",
-          provider: "gemini",
-          model: process.env.FRYN_VISION_MODEL?.trim() || "gemini-3.6-flash",
-        },
-      ]
-    : []),
 ]
-const DEFAULT_LOGICAL_MODEL = process.env.FRYN_DEFAULT_MODEL?.trim() || "fryn-code"
-if (!LOGICAL_MODELS.some((item) => item.id === DEFAULT_LOGICAL_MODEL)) {
-  console.error(`[Fryn] FRYN_DEFAULT_MODEL nao esta habilitado: ${DEFAULT_LOGICAL_MODEL}`)
-  process.exit(1)
-}
-const KNOWN_MODELS = [
-  ...FREE_MODELS,
-  ...LOGICAL_MODELS.map((item) => item.model),
-  ...(ENABLE_PAID_FALLBACK ? [PAID_FALLBACK_MODEL] : []),
-]
+const DEFAULT_LOGICAL_MODEL = "assistant"
+const LEGACY_LOGICAL_MODELS = new Set(["assistant", "fryn-code", "fryn-fast", "fryn-expert", "fryn-plan", "fryn-vision"])
+const KNOWN_MODELS = LOGICAL_MODELS.map((item) => item.model)
 
 const rateWindows = new Map()
 const routeMetrics = new Map(LOGICAL_MODELS.map((item) => [item.id, { requests: 0, successes: 0, failures: 0, totalLatencyMs: 0, lastLatencyMs: 0, lastStatus: null }]))
@@ -100,41 +51,9 @@ function integerEnv(name, fallback, min, max) {
   return value
 }
 
-function booleanEnv(name, fallback) {
-  const raw = process.env[name]?.trim().toLowerCase()
-  if (!raw) return fallback
-  if (["1", "true", "yes", "on"].includes(raw)) return true
-  if (["0", "false", "no", "off"].includes(raw)) return false
-  console.error(`[Fryn] ${name} deve ser true ou false.`)
-  process.exit(1)
-}
-
-function enumEnv(name, fallback, allowed) {
-  const raw = process.env[name]?.trim().toLowerCase() || fallback
-  if (!allowed.includes(raw)) {
-    console.error(`[Fryn] ${name} deve ser um de: ${allowed.join(", ")}.`)
-    process.exit(1)
-  }
-  return raw
-}
-
-function modelListEnv(name, fallback) {
-  const raw = process.env[name]?.trim()
-  if (!raw) return fallback
-  const values = raw
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-  if (!values.length || values.some((item) => !/^[A-Za-z0-9_.~:-]+\/[A-Za-z0-9_.~:-]+$/.test(item))) {
-    console.error(`[Fryn] ${name} contem um identificador de modelo invalido.`)
-    process.exit(1)
-  }
-  return [...new Set(values)]
-}
-
 function normalizeBaseUrl(value) {
   const url = new URL(value)
-  if (!/^https?:$/.test(url.protocol)) throw new Error("OPENROUTER_BASE_URL precisa usar http ou https")
+  if (!/^https?:$/.test(url.protocol)) throw new Error("GROQ_BASE_URL precisa usar http ou https")
   return url.toString().replace(/\/$/, "")
 }
 
@@ -367,41 +286,20 @@ async function proxyAI(req, res, path) {
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "invalid_request" })
   const upstreamPath = path.slice(3) || "/chat/completions"
-  const requestedModel = body.model === "assistant" ? DEFAULT_LOGICAL_MODEL : body.model || DEFAULT_LOGICAL_MODEL
+  const requestedModel = LEGACY_LOGICAL_MODELS.has(body.model || DEFAULT_LOGICAL_MODEL)
+    ? DEFAULT_LOGICAL_MODEL
+    : body.model
   const route = LOGICAL_MODELS.find((item) => item.id === requestedModel)
   if (!route) return json(res, 400, { error: "Modelo Fryn invalido." })
-  const upstream = route.provider === "groq"
-    ? { baseUrl: normalizeBaseUrl(process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1"), apiKey: GROQ_API_KEY }
-    : route.provider === "gemini"
-      ? { baseUrl: normalizeBaseUrl(process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai"), apiKey: GEMINI_API_KEY }
-      : { baseUrl: UPSTREAM_BASE_URL, apiKey: OPENROUTER_API_KEY }
-  const target = `${upstream.baseUrl}${upstreamPath}`
+  const target = `${UPSTREAM_BASE_URL}${upstreamPath}`
   const startedAt = Date.now()
   const metric = routeMetrics.get(route.id)
   metric.requests++
   const attempts = []
   const attemptBody = { ...body, model: route.model }
   delete attemptBody.models
-  if (route.provider === "openrouter") {
-    attemptBody.provider = {
-      ...(body.provider && typeof body.provider === "object" && !Array.isArray(body.provider) ? body.provider : {}),
-      data_collection: DATA_COLLECTION,
-      ...(REQUIRE_ZDR ? { zdr: true } : {}),
-    }
-  } else {
-    delete attemptBody.provider
-  }
-  attempts.push({ kind: route.id, body: attemptBody, apiKey: upstream.apiKey })
-
-  if (route.id === "fryn-code" && ENABLE_PAID_FALLBACK && route.model !== PAID_FALLBACK_MODEL) {
-    const fallback = { ...attemptBody, model: PAID_FALLBACK_MODEL }
-    fallback.provider = {
-      ...(body.provider && typeof body.provider === "object" && !Array.isArray(body.provider) ? body.provider : {}),
-      data_collection: DATA_COLLECTION,
-      ...(REQUIRE_ZDR ? { zdr: true } : {}),
-    }
-    attempts.push({ kind: "fryn-code-fallback", body: fallback, apiKey: OPENROUTER_API_KEY, target: `${UPSTREAM_BASE_URL}${upstreamPath}` })
-  }
+  delete attemptBody.provider
+  attempts.push({ kind: route.id, body: attemptBody, apiKey: GROQ_API_KEY })
 
   function retryableStatus(status) {
     return status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
@@ -574,8 +472,8 @@ const server = createServer(async (req, res) => {
           mode: "direct",
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
-          paidFallback: ENABLE_PAID_FALLBACK,
-          privacy: REQUIRE_ZDR ? "zdr" : DATA_COLLECTION,
+          paidFallback: false,
+          provider: "groq-free-tier",
         },
       })
     }
@@ -597,7 +495,7 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`[Fryn] Backend ativo em http://0.0.0.0:${PORT}`)
   console.log(`[Fryn] ${activeLicenses().length}/${MAX_LICENSES} instalacoes ativas | host ${hostname()}`)
   console.log(
-    `[Fryn] Roteamento direto ativo | ${LOGICAL_MODELS.map((item) => item.id).join(", ")} | fallback pago ${ENABLE_PAID_FALLBACK ? "ativo" : "desativado"}`,
+    `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log(`[Fryn] Privacidade upstream: ${REQUIRE_ZDR ? "ZDR obrigatorio" : `data_collection=${DATA_COLLECTION}`}`)
+  console.log("[Fryn] Provedor upstream: Groq")
 })

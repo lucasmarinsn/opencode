@@ -6,6 +6,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      OPENCODE_CHANNEL: prod
     steps:
       - uses: actions/checkout@v4
 

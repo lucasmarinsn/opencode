@@ -6,7 +6,7 @@ import { join } from "node:path"
 
 const upstreamPort = 18991
 const backendPort = 18992
-const expectedModel = "gemini-3.6-flash"
+const expectedModel = "mimo-v2.5-free"
 let lastBody
 
 const upstream = createServer(async (req, res) => {
@@ -33,8 +33,8 @@ const dataDir = await mkdtemp(join(tmpdir(), "fryn-router-test-"))
 process.env.PORT = String(backendPort)
 process.env.FRYN_DATA_DIR = dataDir
 process.env.FRYN_ADMIN_TOKEN = "test-admin-token"
-process.env.GEMINI_API_KEY = "test-gemini-key"
-process.env.GEMINI_BASE_URL = `http://127.0.0.1:${upstreamPort}`
+process.env.OPENCODE_ZEN_API_KEY = "test-zen-key"
+process.env.OPENCODE_ZEN_BASE_URL = `http://127.0.0.1:${upstreamPort}`
 const { server } = await import(`./server.mjs?test=${Date.now()}`)
 
 async function waitForHealth() {
@@ -53,7 +53,7 @@ try {
   assert.equal(health.routing.mode, "direct")
   assert.deepEqual(health.routing.models, ["assistant"])
   assert.equal(health.routing.paidFallback, false)
-  assert.equal(health.routing.provider, "google-gemini-free-tier")
+  assert.equal(health.routing.provider, "opencode-zen-mimo-v2.5-free")
 
   const activation = await fetch(`http://127.0.0.1:${backendPort}/api/activate`, {
     method: "POST",
@@ -81,7 +81,7 @@ try {
     assert.equal("models" in lastBody, false)
     assert.equal("provider" in lastBody, false)
     assert.ok(text.includes('"model":"Fryn AI"'))
-    assert.ok(!/gemini|google/i.test(text))
+    assert.ok(!/mimo|opencode|zen/i.test(text))
   }
 
   const invalid = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
@@ -99,7 +99,7 @@ try {
   const streamed = await stream.text()
   assert.equal(stream.status, 200)
   assert.ok(streamed.includes('"model":"Fryn AI"'))
-  assert.ok(!/gemini|google/i.test(streamed))
+  assert.ok(!/mimo|opencode|zen/i.test(streamed))
 
   console.log("Fryn single-model routing test: OK")
 } finally {

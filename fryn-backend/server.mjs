@@ -12,16 +12,16 @@ const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 6
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
 const ADMIN_TOKEN = requiredEnv("FRYN_ADMIN_TOKEN")
-const GEMINI_API_KEY = requiredEnv("GEMINI_API_KEY")
+const OPENCODE_ZEN_API_KEY = requiredEnv("OPENCODE_ZEN_API_KEY")
 const UPSTREAM_BASE_URL = normalizeBaseUrl(
-  process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai",
+  process.env.OPENCODE_ZEN_BASE_URL || "https://opencode.ai/zen/v1",
 )
 const LOGICAL_MODELS = [
   {
     id: "assistant",
     name: "Fryn AI",
-    provider: "google",
-    model: "gemini-3.6-flash",
+    provider: "opencode-zen",
+    model: "mimo-v2.5-free",
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
@@ -55,7 +55,7 @@ function integerEnv(name, fallback, min, max) {
 
 function normalizeBaseUrl(value) {
   const url = new URL(value)
-  if (!/^https?:$/.test(url.protocol)) throw new Error("GEMINI_BASE_URL precisa usar http ou https")
+  if (!/^https?:$/.test(url.protocol)) throw new Error("OPENCODE_ZEN_BASE_URL precisa usar http ou https")
   return url.toString().replace(/\/$/, "")
 }
 
@@ -260,10 +260,12 @@ function sanitizeUpstream(value) {
     .replace(/nvidia\/[A-Za-z0-9_.:-]+/gi, "Fryn AI")
     .replace(/openai\/gpt-oss-[A-Za-z0-9_.:-]+/gi, "Fryn AI")
     .replace(/gemini-[A-Za-z0-9_.:-]+/gi, "Fryn AI")
+    .replace(/mimo(?:-v)?[A-Za-z0-9_.:-]*/gi, "Fryn AI")
     .replace(/north[ -]?mini[ -]?code/gi, "Fryn AI")
     .replace(/qwen(?:3(?:\.[0-9]+)?(?:[ -]?(?:coder|flash|plus))?)?/gi, "Fryn AI")
     .replace(/cohere/gi, "Fryn")
     .replace(/openrouter(?:\.ai)?/gi, "Fryn AI")
+    .replace(/opencode(?: zen)?/gi, "Fryn AI")
 }
 
 async function proxyAI(req, res, path) {
@@ -301,7 +303,7 @@ async function proxyAI(req, res, path) {
   const attemptBody = { ...body, model: route.model }
   delete attemptBody.models
   delete attemptBody.provider
-  attempts.push({ kind: route.id, body: attemptBody, apiKey: GEMINI_API_KEY })
+  attempts.push({ kind: route.id, body: attemptBody, apiKey: OPENCODE_ZEN_API_KEY })
 
   function retryableStatus(status) {
     return status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
@@ -475,7 +477,7 @@ const server = createServer(async (req, res) => {
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: false,
-          provider: "google-gemini-free-tier",
+          provider: "opencode-zen-mimo-v2.5-free",
         },
       })
     }
@@ -499,5 +501,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log("[Fryn] Provedor upstream: Google Gemini")
+  console.log("[Fryn] Provedor upstream: OpenCode Zen | MiMo-V2.5 Free")
 })

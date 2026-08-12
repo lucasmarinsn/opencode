@@ -1680,16 +1680,40 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       data-component="prompt-model-control"
                       classList={{ "animate-in fade-in duration-300": providersShouldFadeIn() }}
                     >
-                      <Button
-                        data-action="prompt-model"
-                        as="div"
-                        variant="ghost"
-                        size="normal"
-                        class="min-w-0 max-w-[320px] text-13-regular text-text-base"
-                        style={control()}
+                      <TooltipKeybind
+                        placement="top"
+                        gutter={4}
+                        title={language.t("command.model.choose")}
+                        keybind={command.keybind("model.choose")}
                       >
-                        <span class="truncate">Fryn AI</span>
-                      </Button>
+                        <ModelSelectorPopover
+                          model={props.controls.model.selection}
+                          trigger={(triggerProps) => (
+                            <Button
+                              {...triggerProps}
+                              variant="ghost"
+                              size="normal"
+                              style={control()}
+                              class="min-w-0 max-w-[320px] text-13-regular text-text-base group"
+                              data-action="prompt-model"
+                            >
+                              <Show when={props.controls.model.selection.current()?.provider?.id}>
+                                <ProviderIcon
+                                  id={props.controls.model.selection.current()?.provider?.id ?? ""}
+                                  class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
+                                  style={{ "will-change": "opacity", transform: "translateZ(0)" }}
+                                />
+                              </Show>
+                              <span class="truncate">
+                                {props.controls.model.selection.current()?.name ??
+                                  language.t("dialog.model.select.title")}
+                              </span>
+                              <Icon name="chevron-down" size="small" class="shrink-0" />
+                            </Button>
+                          )}
+                          onClose={restoreFocus}
+                        />
+                      </TooltipKeybind>
                     </div>
                   </Show>
                 </Show>

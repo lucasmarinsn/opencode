@@ -12,16 +12,16 @@ const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 6
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
 const ADMIN_TOKEN = requiredEnv("FRYN_ADMIN_TOKEN")
-const OPENROUTER_API_KEY = requiredEnv("OPENROUTER_API_KEY")
+const MIMO_API_KEY = requiredEnv("MIMO_API_KEY")
 const UPSTREAM_BASE_URL = normalizeBaseUrl(
-  process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+  process.env.MIMO_BASE_URL || "https://token-plan-sgp.xiaomimimo.com/v1",
 )
 const LOGICAL_MODELS = [
   {
     id: "assistant",
     name: "Fryn AI",
-    provider: "openrouter",
-    model: "openrouter/free",
+    provider: "xiaomi-mimo",
+    model: "mimo-v2.5-pro",
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
@@ -55,7 +55,7 @@ function integerEnv(name, fallback, min, max) {
 
 function normalizeBaseUrl(value) {
   const url = new URL(value)
-  if (!/^https?:$/.test(url.protocol)) throw new Error("OPENROUTER_BASE_URL precisa usar http ou https")
+  if (!/^https?:$/.test(url.protocol)) throw new Error("MIMO_BASE_URL precisa usar http ou https")
   return url.toString().replace(/\/$/, "")
 }
 
@@ -261,6 +261,7 @@ function sanitizeUpstream(value) {
     .replace(/openai\/gpt-oss-[A-Za-z0-9_.:-]+/gi, "Fryn AI")
     .replace(/gemini-[A-Za-z0-9_.:-]+/gi, "Fryn AI")
     .replace(/mimo(?:-v)?[A-Za-z0-9_.:-]*/gi, "Fryn AI")
+    .replace(/xiaomi(?:mimo)?/gi, "Fryn AI")
     .replace(/north-mini-code-free/gi, "Fryn AI")
     .replace(/north[ -]?mini[ -]?code/gi, "Fryn AI")
     .replace(/qwen(?:3(?:\.[0-9]+)?(?:[ -]?(?:coder|flash|plus))?)?/gi, "Fryn AI")
@@ -304,7 +305,7 @@ async function proxyAI(req, res, path) {
   const attemptBody = { ...body, model: route.model }
   delete attemptBody.models
   delete attemptBody.provider
-  attempts.push({ kind: route.id, body: attemptBody, apiKey: OPENROUTER_API_KEY })
+  attempts.push({ kind: route.id, body: attemptBody, apiKey: MIMO_API_KEY })
 
   function retryableStatus(status, detail = "") {
     const retryableHttp = status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
@@ -489,7 +490,7 @@ const server = createServer(async (req, res) => {
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: false,
-          provider: "openrouter-free-router",
+          provider: "xiaomi-mimo-v2.5-pro",
         },
       })
     }
@@ -513,5 +514,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log("[Fryn] Provedor upstream: OpenRouter | Free router")
+  console.log("[Fryn] Provedor upstream: Xiaomi MiMo | V2.5 Pro")
 })

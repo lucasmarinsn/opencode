@@ -3,11 +3,21 @@ name: Build Fryn Windows
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
     env:
       OPENCODE_CHANNEL: prod
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+      AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE }}
+      AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +40,14 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Azure login for signing
+        if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
       - name: Build desktop
         working-directory: packages/desktop
         run: bun run build
@@ -37,6 +55,17 @@ jobs:
       - name: Package Windows installer
         working-directory: packages/desktop
         run: bun run package:win
+
+      - name: Verify Fryn installer signature
+        if: env.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME != '' && env.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE != '' && env.AZURE_TRUSTED_SIGNING_ENDPOINT != ''
+        shell: pwsh
+        run: |
+          $file = "${{ github.workspace }}\packages\desktop\dist\Fryn-Setup.exe"
+          $sig = Get-AuthenticodeSignature $file
+          if ($sig.Status -ne "Valid") {
+            throw "Invalid signature for ${file}: $($sig.Status)"
+          }
+          Write-Host "Fryn installer signature is valid: $($sig.SignerCertificate.Subject)"
 
       - name: Upload Fryn installer
         uses: actions/upload-artifact@v4

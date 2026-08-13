@@ -1,17 +1,17 @@
-# Fryn Backend - North Mini Code Free
+# Fryn Backend - OpenCode Zen Free Chain
 
 Gateway privado do Fryn para ate 12 instalacoes. A chave real permanece no Railway e o aplicativo mostra apenas **Fryn AI**.
 
 ## Modelo
 
-O unico modelo e `north-mini-code-free`, servido pelo OpenCode Zen em endpoint compativel com OpenAI. Os IDs antigos dos modos continuam aceitos temporariamente, mas todos usam exatamente esse mesmo modelo. Nao existe fallback pago ou troca silenciosa de provedor.
+O modo unico do aplicativo e `Fryn AI`. Por tras, o backend tenta `north-mini-code-free` primeiro e, se o OpenCode Zen recusar o modelo gratuito, tenta outros modelos Free em sequencia. Os IDs antigos dos modos continuam aceitos temporariamente, mas todos usam exatamente esse mesmo modo logico. Nao existe fallback pago ou troca silenciosa para modelo cobrado.
 
 ## Configuracao
 
 1. Configure `OPENCODE_ZEN_API_KEY` no Railway.
 2. Configure um `FRYN_ADMIN_TOKEN` longo e aleatorio.
 3. Remova `FRYN_MODEL`, `GEMINI_API_KEY`, `GEMINI_BASE_URL`, `GROQ_API_KEY`, `GROQ_BASE_URL` e variaveis antigas do OpenRouter depois que esta versao estiver ativa.
-4. Faca o deploy e confirme que `/health` retorna `ok: true`, `opencode-zen-north-mini-code-free` e somente `assistant` em `routing.models`.
+4. Faca o deploy e confirme que `/health` retorna `ok: true`, `opencode-zen-free-chain` e somente `assistant` em `routing.models`.
 5. Use a URL HTTPS do servico como `FRYN_BACKEND_URL` no build do desktop.
 
 `OPENCODE_ZEN_BASE_URL` e opcional e deve permanecer ausente no Railway. O backend usa por padrao `https://opencode.ai/zen/v1`.

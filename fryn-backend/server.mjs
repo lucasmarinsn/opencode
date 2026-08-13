@@ -16,17 +16,26 @@ const OPENCODE_ZEN_API_KEY = requiredEnv("OPENCODE_ZEN_API_KEY")
 const UPSTREAM_BASE_URL = normalizeBaseUrl(
   process.env.OPENCODE_ZEN_BASE_URL || "https://opencode.ai/zen/v1",
 )
+const FREE_MODEL_CHAIN = [
+  "north-mini-code-free",
+  "deepseek-v4-flash-free",
+  "laguna-s-2.1-free",
+  "longcat-2.0-free",
+  "ling-3.0-tiny-free",
+  "nemotron-3-ultra-free",
+  "mimo-v2.5-free",
+]
 const LOGICAL_MODELS = [
   {
     id: "assistant",
     name: "Fryn AI",
     provider: "opencode-zen",
-    model: "north-mini-code-free",
+    model: FREE_MODEL_CHAIN[0],
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
 const LEGACY_LOGICAL_MODELS = new Set(["assistant", "fryn-code", "fryn-fast", "fryn-expert", "fryn-plan", "fryn-vision"])
-const KNOWN_MODELS = LOGICAL_MODELS.map((item) => item.model)
+const KNOWN_MODELS = [...new Set([...LOGICAL_MODELS.map((item) => item.model), ...FREE_MODEL_CHAIN])]
 
 const rateWindows = new Map()
 const routeMetrics = new Map(LOGICAL_MODELS.map((item) => [item.id, { requests: 0, successes: 0, failures: 0, totalLatencyMs: 0, lastLatencyMs: 0, lastStatus: null }]))
@@ -300,17 +309,21 @@ async function proxyAI(req, res, path) {
   const startedAt = Date.now()
   const metric = routeMetrics.get(route.id)
   metric.requests++
-  const attempts = []
-  const attemptBody = { ...body, model: route.model }
-  delete attemptBody.models
-  delete attemptBody.provider
-  attempts.push({ kind: route.id, body: attemptBody, apiKey: OPENCODE_ZEN_API_KEY })
+  const attempts = FREE_MODEL_CHAIN.map((model) => {
+    const attemptBody = { ...body, model }
+    delete attemptBody.models
+    delete attemptBody.provider
+    return { kind: `${route.id}:${model}`, body: attemptBody, apiKey: OPENCODE_ZEN_API_KEY }
+  })
 
-  function retryableStatus(status) {
-    return status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
+  function retryableStatus(status, detail = "") {
+    const retryableHttp = status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
+    const retryableZenMessage = /model.+not.+support|not supported|unsupported|free usage|quota|rate.?limit|limit exceeded/i.test(detail)
+    return retryableHttp || ((status === 400 || status === 402 || status === 403) && retryableZenMessage)
   }
 
   let upstreamResponse
+  let upstreamErrorText = ""
   for (let index = 0; index < attempts.length; index++) {
     const attempt = attempts[index]
     try {
@@ -335,11 +348,10 @@ async function proxyAI(req, res, path) {
       return json(res, 502, { error: "Fryn AI indisponivel no momento." })
     }
 
-    if (upstreamResponse.ok || index === attempts.length - 1 || !retryableStatus(upstreamResponse.status)) break
+    if (upstreamResponse.ok) break
+    upstreamErrorText = await upstreamResponse.text().catch(() => "")
+    if (index === attempts.length - 1 || !retryableStatus(upstreamResponse.status, upstreamErrorText)) break
     console.warn(`[Fryn] Rota ${attempt.kind} indisponivel (HTTP ${upstreamResponse.status}); tentando proxima rota.`)
-    try {
-      await upstreamResponse.body?.cancel()
-    } catch {}
     upstreamResponse = undefined
   }
 
@@ -357,6 +369,15 @@ async function proxyAI(req, res, path) {
   void persistState()
 
   const contentType = upstreamResponse.headers.get("content-type") || "application/json; charset=utf-8"
+  if (!upstreamResponse.ok && upstreamErrorText) {
+    const sanitized = sanitizeUpstream(upstreamErrorText)
+    res.writeHead(upstreamResponse.status, {
+      "content-type": contentType,
+      "cache-control": "no-store",
+    })
+    return res.end(sanitized)
+  }
+
   res.writeHead(upstreamResponse.status, {
     "content-type": contentType,
     "cache-control": "no-store",
@@ -478,7 +499,8 @@ const server = createServer(async (req, res) => {
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: false,
-          provider: "opencode-zen-north-mini-code-free",
+          provider: "opencode-zen-free-chain",
+          upstreamModels: FREE_MODEL_CHAIN,
         },
       })
     }
@@ -502,5 +524,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log("[Fryn] Provedor upstream: OpenCode Zen | North Mini Code Free")
+  console.log("[Fryn] Provedor upstream: OpenCode Zen | Free model chain")
 })

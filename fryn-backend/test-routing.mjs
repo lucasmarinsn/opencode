@@ -6,13 +6,22 @@ import { join } from "node:path"
 
 const upstreamPort = 18991
 const backendPort = 18992
-const expectedModel = "north-mini-code-free"
+const firstModel = "north-mini-code-free"
+const expectedModel = "deepseek-v4-flash-free"
 let lastBody
+const seenModels = []
 
 const upstream = createServer(async (req, res) => {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
   lastBody = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")
+  seenModels.push(lastBody.model)
+  if (lastBody.model === firstModel) {
+    const data = JSON.stringify({ error: { message: `Model ${firstModel} is not supported` } })
+    res.writeHead(400, { "content-type": "application/json", "content-length": Buffer.byteLength(data) })
+    res.end(data)
+    return
+  }
   if (lastBody.stream) {
     res.writeHead(200, { "content-type": "text/event-stream" })
     res.write(`data: ${JSON.stringify({ id: "x", model: expectedModel, choices: [{ delta: { content: "ok" } }] })}\n\n`)
@@ -53,7 +62,9 @@ try {
   assert.equal(health.routing.mode, "direct")
   assert.deepEqual(health.routing.models, ["assistant"])
   assert.equal(health.routing.paidFallback, false)
-  assert.equal(health.routing.provider, "opencode-zen-north-mini-code-free")
+  assert.equal(health.routing.provider, "opencode-zen-free-chain")
+  assert.equal(health.routing.upstreamModels[0], firstModel)
+  assert.equal(health.routing.upstreamModels[1], expectedModel)
 
   const activation = await fetch(`http://127.0.0.1:${backendPort}/api/activate`, {
     method: "POST",
@@ -78,6 +89,7 @@ try {
     const text = await response.text()
     assert.equal(response.status, 200)
     assert.equal(lastBody.model, expectedModel)
+    assert.ok(seenModels.includes(firstModel))
     assert.equal("models" in lastBody, false)
     assert.equal("provider" in lastBody, false)
     assert.ok(text.includes('"model":"Fryn AI"'))

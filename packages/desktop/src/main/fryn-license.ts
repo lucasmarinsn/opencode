@@ -10,7 +10,13 @@ const INSTALLATION_ID_KEY = "installationId"
 const LICENSE_TOKEN_KEY = "licenseToken"
 const REQUEST_TIMEOUT_MS = 10_000
 
-type BackendConfig = { backendUrl?: string }
+export type FrynAppConfig = {
+  backendUrl?: string
+  microsoft?: {
+    clientId?: string
+    tenant?: string
+  }
+}
 type ActivationResponse = { token: string; slot: number; max: number }
 type StatusResponse = { active: boolean; slot: number; max: number }
 
@@ -21,21 +27,26 @@ function normalizeUrl(value: string) {
 }
 
 export function getFrynBackendUrl() {
+  const config = readFrynAppConfig()
   const env = process.env.FRYN_BACKEND_URL?.trim()
   if (env) return normalizeUrl(env)
 
+  if (config.backendUrl) return normalizeUrl(config.backendUrl)
+  throw new Error("Backend do Fryn nao configurado.")
+}
+
+export function readFrynAppConfig(): FrynAppConfig {
   const paths = app.isPackaged
     ? [join(process.resourcesPath, "fryn-backend.json")]
     : [join(app.getAppPath(), "fryn-backend.json"), join(process.cwd(), "fryn-backend.json")]
 
   for (const path of paths) {
     try {
-      const config = JSON.parse(readFileSync(path, "utf8")) as BackendConfig
-      if (config.backendUrl) return normalizeUrl(config.backendUrl)
+      return JSON.parse(readFileSync(path, "utf8")) as FrynAppConfig
     } catch {}
   }
 
-  throw new Error("Backend do Fryn nao configurado.")
+  return {}
 }
 
 function installationId() {

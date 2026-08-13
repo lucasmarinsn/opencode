@@ -25,13 +25,23 @@ jobs:
         shell: pwsh
         env:
           FRYN_BACKEND_URL: ${{ vars.FRYN_BACKEND_URL }}
+          FRYN_MICROSOFT_CLIENT_ID: ${{ vars.FRYN_MICROSOFT_CLIENT_ID }}
+          FRYN_MICROSOFT_TENANT: ${{ vars.FRYN_MICROSOFT_TENANT }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:FRYN_BACKEND_URL)) {
             throw "Crie a variavel de repositorio FRYN_BACKEND_URL com a URL HTTPS do seu backend Fryn antes de gerar o instalador."
           }
-          $config = @{ backendUrl = $env:FRYN_BACKEND_URL.TrimEnd('/') } | ConvertTo-Json
+          $clientId = if ([string]::IsNullOrWhiteSpace($env:FRYN_MICROSOFT_CLIENT_ID)) { "7889876a-1fa9-4165-9d73-bb1d234dde2d" } else { $env:FRYN_MICROSOFT_CLIENT_ID.Trim() }
+          $tenant = if ([string]::IsNullOrWhiteSpace($env:FRYN_MICROSOFT_TENANT)) { "common" } else { $env:FRYN_MICROSOFT_TENANT.Trim() }
+          $config = @{
+            backendUrl = $env:FRYN_BACKEND_URL.TrimEnd('/')
+            microsoft = @{
+              clientId = $clientId
+              tenant = $tenant
+            }
+          } | ConvertTo-Json -Depth 5
           Set-Content -Path "packages/desktop/fryn-backend.json" -Value $config -Encoding utf8
-          Write-Host "Backend Fryn configurado para o build."
+          Write-Host "Backend Fryn e Microsoft Client ID configurados para o build."
 
       - uses: oven-sh/setup-bun@v2
         with:

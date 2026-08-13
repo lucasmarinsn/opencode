@@ -1,9 +1,9 @@
 {
   "name": "fryn-backend",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "private": true,
   "type": "module",
-  "description": "Private Fryn licensing and OpenCode Zen free-model gateway for up to 12 desktop installations",
+  "description": "Private Fryn licensing and OpenRouter free-router gateway for up to 12 desktop installations",
   "scripts": {
     "start": "node server.mjs",
     "admin": "node admin-cli.mjs",

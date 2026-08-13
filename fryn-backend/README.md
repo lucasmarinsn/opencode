@@ -1,26 +1,26 @@
-# Fryn Backend - OpenCode Zen Free Chain
+# Fryn Backend - OpenRouter Free Router
 
 Gateway privado do Fryn para ate 12 instalacoes. A chave real permanece no Railway e o aplicativo mostra apenas **Fryn AI**.
 
 ## Modelo
 
-O modo unico do aplicativo e `Fryn AI`. Por tras, o backend tenta `north-mini-code-free` primeiro e, se o OpenCode Zen recusar o modelo gratuito, tenta outros modelos Free em sequencia. Os IDs antigos dos modos continuam aceitos temporariamente, mas todos usam exatamente esse mesmo modo logico. Nao existe fallback pago ou troca silenciosa para modelo cobrado.
+O modo unico do aplicativo e `Fryn AI`. Por tras, o backend usa `openrouter/free`, o roteador gratuito da OpenRouter que escolhe um modelo Free disponivel conforme os requisitos da chamada. Os IDs antigos dos modos continuam aceitos temporariamente, mas todos usam exatamente esse mesmo modo logico.
 
 ## Configuracao
 
-1. Configure `OPENCODE_ZEN_API_KEY` no Railway.
+1. Configure `OPENROUTER_API_KEY` no Railway.
 2. Configure um `FRYN_ADMIN_TOKEN` longo e aleatorio.
-3. Remova `FRYN_MODEL`, `GEMINI_API_KEY`, `GEMINI_BASE_URL`, `GROQ_API_KEY`, `GROQ_BASE_URL` e variaveis antigas do OpenRouter depois que esta versao estiver ativa.
-4. Faca o deploy e confirme que `/health` retorna `ok: true`, `opencode-zen-free-chain` e somente `assistant` em `routing.models`.
+3. Remova `FRYN_MODEL`, `OPENCODE_ZEN_API_KEY`, `OPENCODE_ZEN_BASE_URL`, `GEMINI_API_KEY`, `GEMINI_BASE_URL`, `GROQ_API_KEY` e `GROQ_BASE_URL` depois que esta versao estiver ativa.
+4. Faca o deploy e confirme que `/health` retorna `ok: true`, `openrouter-free-router` e somente `assistant` em `routing.models`.
 5. Use a URL HTTPS do servico como `FRYN_BACKEND_URL` no build do desktop.
 
-`OPENCODE_ZEN_BASE_URL` e opcional e deve permanecer ausente no Railway. O backend usa por padrao `https://opencode.ai/zen/v1`.
+`OPENROUTER_BASE_URL` e opcional e deve permanecer ausente no Railway. O backend usa por padrao `https://openrouter.ai/api/v1`.
 
 ## Limites e privacidade do nivel gratuito
 
-A cota pertence a conta/chave do OpenCode Zen e e compartilhada por todos os usuarios do Fryn. Ao atingir o limite gratuito, a API pode responder com HTTP 429 e o Fryn informa indisponibilidade temporaria.
+A cota pertence a conta/chave da OpenRouter e e compartilhada por todos os usuarios do Fryn. Ao atingir o limite gratuito, a API pode responder com HTTP 429 e o Fryn informa indisponibilidade temporaria.
 
-Segundo a documentacao do OpenCode Zen, os modelos Free podem ter limites e politicas proprias. Nao envie codigo, documentos ou dados confidenciais da empresa nessa modalidade.
+Modelos Free podem ter limites, disponibilidade variavel e politicas proprias de retencao/treinamento. Nao envie codigo, documentos ou dados confidenciais da empresa nessa modalidade.
 
 ## Administracao
 
@@ -35,6 +35,6 @@ node admin-cli.mjs delete INSTALLATION_ID
 
 ## Seguranca
 
-- Nunca coloque `OPENCODE_ZEN_API_KEY` no instalador.
+- Nunca coloque `OPENROUTER_API_KEY` no instalador.
 - Use HTTPS.
 - Mantenha confirmacao explicita antes de e-mail, calendario ou qualquer acao externa.

@@ -12,30 +12,21 @@ const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 6
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
 const ADMIN_TOKEN = requiredEnv("FRYN_ADMIN_TOKEN")
-const OPENCODE_ZEN_API_KEY = requiredEnv("OPENCODE_ZEN_API_KEY")
+const OPENROUTER_API_KEY = requiredEnv("OPENROUTER_API_KEY")
 const UPSTREAM_BASE_URL = normalizeBaseUrl(
-  process.env.OPENCODE_ZEN_BASE_URL || "https://opencode.ai/zen/v1",
+  process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
 )
-const FREE_MODEL_CHAIN = [
-  "north-mini-code-free",
-  "deepseek-v4-flash-free",
-  "laguna-s-2.1-free",
-  "longcat-2.0-free",
-  "ling-3.0-tiny-free",
-  "nemotron-3-ultra-free",
-  "mimo-v2.5-free",
-]
 const LOGICAL_MODELS = [
   {
     id: "assistant",
     name: "Fryn AI",
-    provider: "opencode-zen",
-    model: FREE_MODEL_CHAIN[0],
+    provider: "openrouter",
+    model: "openrouter/free",
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
 const LEGACY_LOGICAL_MODELS = new Set(["assistant", "fryn-code", "fryn-fast", "fryn-expert", "fryn-plan", "fryn-vision"])
-const KNOWN_MODELS = [...new Set([...LOGICAL_MODELS.map((item) => item.model), ...FREE_MODEL_CHAIN])]
+const KNOWN_MODELS = LOGICAL_MODELS.map((item) => item.model)
 
 const rateWindows = new Map()
 const routeMetrics = new Map(LOGICAL_MODELS.map((item) => [item.id, { requests: 0, successes: 0, failures: 0, totalLatencyMs: 0, lastLatencyMs: 0, lastStatus: null }]))
@@ -64,7 +55,7 @@ function integerEnv(name, fallback, min, max) {
 
 function normalizeBaseUrl(value) {
   const url = new URL(value)
-  if (!/^https?:$/.test(url.protocol)) throw new Error("OPENCODE_ZEN_BASE_URL precisa usar http ou https")
+  if (!/^https?:$/.test(url.protocol)) throw new Error("OPENROUTER_BASE_URL precisa usar http ou https")
   return url.toString().replace(/\/$/, "")
 }
 
@@ -309,12 +300,11 @@ async function proxyAI(req, res, path) {
   const startedAt = Date.now()
   const metric = routeMetrics.get(route.id)
   metric.requests++
-  const attempts = FREE_MODEL_CHAIN.map((model) => {
-    const attemptBody = { ...body, model }
-    delete attemptBody.models
-    delete attemptBody.provider
-    return { kind: `${route.id}:${model}`, body: attemptBody, apiKey: OPENCODE_ZEN_API_KEY }
-  })
+  const attempts = []
+  const attemptBody = { ...body, model: route.model }
+  delete attemptBody.models
+  delete attemptBody.provider
+  attempts.push({ kind: route.id, body: attemptBody, apiKey: OPENROUTER_API_KEY })
 
   function retryableStatus(status, detail = "") {
     const retryableHttp = status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
@@ -499,8 +489,7 @@ const server = createServer(async (req, res) => {
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: false,
-          provider: "opencode-zen-free-chain",
-          upstreamModels: FREE_MODEL_CHAIN,
+          provider: "openrouter-free-router",
         },
       })
     }
@@ -524,5 +513,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log("[Fryn] Provedor upstream: OpenCode Zen | Free model chain")
+  console.log("[Fryn] Provedor upstream: OpenRouter | Free router")
 })

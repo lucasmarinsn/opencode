@@ -6,22 +6,13 @@ import { join } from "node:path"
 
 const upstreamPort = 18991
 const backendPort = 18992
-const firstModel = "north-mini-code-free"
-const expectedModel = "deepseek-v4-flash-free"
+const expectedModel = "openrouter/free"
 let lastBody
-const seenModels = []
 
 const upstream = createServer(async (req, res) => {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
   lastBody = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")
-  seenModels.push(lastBody.model)
-  if (lastBody.model === firstModel) {
-    const data = JSON.stringify({ error: { message: `Model ${firstModel} is not supported` } })
-    res.writeHead(400, { "content-type": "application/json", "content-length": Buffer.byteLength(data) })
-    res.end(data)
-    return
-  }
   if (lastBody.stream) {
     res.writeHead(200, { "content-type": "text/event-stream" })
     res.write(`data: ${JSON.stringify({ id: "x", model: expectedModel, choices: [{ delta: { content: "ok" } }] })}\n\n`)
@@ -42,8 +33,8 @@ const dataDir = await mkdtemp(join(tmpdir(), "fryn-router-test-"))
 process.env.PORT = String(backendPort)
 process.env.FRYN_DATA_DIR = dataDir
 process.env.FRYN_ADMIN_TOKEN = "test-admin-token"
-process.env.OPENCODE_ZEN_API_KEY = "test-zen-key"
-process.env.OPENCODE_ZEN_BASE_URL = `http://127.0.0.1:${upstreamPort}`
+process.env.OPENROUTER_API_KEY = "test-openrouter-key"
+process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${upstreamPort}`
 const { server } = await import(`./server.mjs?test=${Date.now()}`)
 
 async function waitForHealth() {
@@ -62,9 +53,7 @@ try {
   assert.equal(health.routing.mode, "direct")
   assert.deepEqual(health.routing.models, ["assistant"])
   assert.equal(health.routing.paidFallback, false)
-  assert.equal(health.routing.provider, "opencode-zen-free-chain")
-  assert.equal(health.routing.upstreamModels[0], firstModel)
-  assert.equal(health.routing.upstreamModels[1], expectedModel)
+  assert.equal(health.routing.provider, "openrouter-free-router")
 
   const activation = await fetch(`http://127.0.0.1:${backendPort}/api/activate`, {
     method: "POST",
@@ -89,11 +78,10 @@ try {
     const text = await response.text()
     assert.equal(response.status, 200)
     assert.equal(lastBody.model, expectedModel)
-    assert.ok(seenModels.includes(firstModel))
     assert.equal("models" in lastBody, false)
     assert.equal("provider" in lastBody, false)
     assert.ok(text.includes('"model":"Fryn AI"'))
-    assert.ok(!/north|mimo|opencode|zen/i.test(text))
+    assert.ok(!/openrouter|north|mimo|opencode|zen/i.test(text))
   }
 
   const invalid = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
@@ -111,7 +99,7 @@ try {
   const streamed = await stream.text()
   assert.equal(stream.status, 200)
   assert.ok(streamed.includes('"model":"Fryn AI"'))
-  assert.ok(!/north|mimo|opencode|zen/i.test(streamed))
+  assert.ok(!/openrouter|north|mimo|opencode|zen/i.test(streamed))
 
   console.log("Fryn single-model routing test: OK")
 } finally {

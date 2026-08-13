@@ -21,7 +21,7 @@ const LOGICAL_MODELS = [
     id: "assistant",
     name: "Fryn AI",
     provider: "opencode-zen",
-    model: "mimo-v2.5-free",
+    model: "north-mini-code-free",
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
@@ -261,6 +261,7 @@ function sanitizeUpstream(value) {
     .replace(/openai\/gpt-oss-[A-Za-z0-9_.:-]+/gi, "Fryn AI")
     .replace(/gemini-[A-Za-z0-9_.:-]+/gi, "Fryn AI")
     .replace(/mimo(?:-v)?[A-Za-z0-9_.:-]*/gi, "Fryn AI")
+    .replace(/north-mini-code-free/gi, "Fryn AI")
     .replace(/north[ -]?mini[ -]?code/gi, "Fryn AI")
     .replace(/qwen(?:3(?:\.[0-9]+)?(?:[ -]?(?:coder|flash|plus))?)?/gi, "Fryn AI")
     .replace(/cohere/gi, "Fryn")
@@ -477,7 +478,7 @@ const server = createServer(async (req, res) => {
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: false,
-          provider: "opencode-zen-mimo-v2.5-free",
+          provider: "opencode-zen-north-mini-code-free",
         },
       })
     }
@@ -501,5 +502,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log("[Fryn] Provedor upstream: OpenCode Zen | MiMo-V2.5 Free")
+  console.log("[Fryn] Provedor upstream: OpenCode Zen | North Mini Code Free")
 })

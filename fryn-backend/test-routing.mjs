@@ -6,7 +6,7 @@ import { join } from "node:path"
 
 const upstreamPort = 18991
 const backendPort = 18992
-const expectedModel = "mimo-v2.5-free"
+const expectedModel = "north-mini-code-free"
 let lastBody
 
 const upstream = createServer(async (req, res) => {
@@ -53,7 +53,7 @@ try {
   assert.equal(health.routing.mode, "direct")
   assert.deepEqual(health.routing.models, ["assistant"])
   assert.equal(health.routing.paidFallback, false)
-  assert.equal(health.routing.provider, "opencode-zen-mimo-v2.5-free")
+  assert.equal(health.routing.provider, "opencode-zen-north-mini-code-free")
 
   const activation = await fetch(`http://127.0.0.1:${backendPort}/api/activate`, {
     method: "POST",
@@ -81,7 +81,7 @@ try {
     assert.equal("models" in lastBody, false)
     assert.equal("provider" in lastBody, false)
     assert.ok(text.includes('"model":"Fryn AI"'))
-    assert.ok(!/mimo|opencode|zen/i.test(text))
+    assert.ok(!/north|mimo|opencode|zen/i.test(text))
   }
 
   const invalid = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
@@ -99,7 +99,7 @@ try {
   const streamed = await stream.text()
   assert.equal(stream.status, 200)
   assert.ok(streamed.includes('"model":"Fryn AI"'))
-  assert.ok(!/mimo|opencode|zen/i.test(streamed))
+  assert.ok(!/north|mimo|opencode|zen/i.test(streamed))
 
   console.log("Fryn single-model routing test: OK")
 } finally {

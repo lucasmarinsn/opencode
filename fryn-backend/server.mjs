@@ -22,6 +22,7 @@ const LOGICAL_MODELS = [
     name: "Fryn AI",
     provider: "xiaomi-mimo",
     model: "mimo-v2.5-pro",
+    modalities: { input: ["text", "image", "pdf"], output: ["text"] },
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
@@ -278,7 +279,13 @@ async function proxyAI(req, res, path) {
   if (req.method === "GET" && path === "/v1/models") {
     return json(res, 200, {
       object: "list",
-      data: LOGICAL_MODELS.map((item) => ({ id: item.id, name: item.name, object: "model", owned_by: "fryn" })),
+      data: LOGICAL_MODELS.map((item) => ({
+        id: item.id,
+        name: item.name,
+        object: "model",
+        owned_by: "fryn",
+        modalities: item.modalities,
+      })),
     })
   }
 

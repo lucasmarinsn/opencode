@@ -68,6 +68,7 @@ try {
     headers: { authorization: `Bearer ${token}` },
   }).then((response) => response.json())
   assert.deepEqual(models.data.map((item) => item.id), ["assistant"])
+  assert.deepEqual(models.data[0].modalities, { input: ["text", "image", "pdf"], output: ["text"] })
 
   for (const model of ["assistant", "fryn-code", "fryn-fast", "fryn-expert", "fryn-plan", "fryn-vision"]) {
     const response = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {

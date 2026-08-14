@@ -6,7 +6,7 @@ import { getLogger } from "./logging"
 import { getUserShell, loadShellEnv } from "./shell-env"
 import { getStore } from "./store"
 import { DEFAULT_SERVER_URL_KEY } from "./store-keys"
-import { ensureFrynLicense } from "./fryn-license"
+import { ensureFrynLicense, readFrynAppConfig } from "./fryn-license"
 
 export type HealthCheck = { wait: Promise<void> }
 
@@ -45,6 +45,7 @@ export function setDefaultServerUrl(url: string | null) {
 export async function preferAppEnv(userDataPath: string) {
   const shell = process.platform === "win32" ? null : getUserShell()
   const shellEnv = shell ? loadShellEnv(shell, getLogger()) : null
+  const appConfig = readFrynAppConfig()
 
   // Each desktop installation receives only a revocable Fryn license token.
   // The upstream AI credential and model remain exclusively on the Fryn backend.
@@ -102,6 +103,8 @@ export async function preferAppEnv(userDataPath: string) {
     OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",
     OPENCODE_EXPERIMENTAL_FILEWATCHER: "true",
     OPENCODE_CLIENT: "desktop",
+    ...(appConfig.microsoft?.clientId ? { FRYN_MICROSOFT_CLIENT_ID: appConfig.microsoft.clientId } : {}),
+    FRYN_MICROSOFT_TENANT: appConfig.microsoft?.tenant ?? "common",
     XDG_STATE_HOME: process.env.XDG_STATE_HOME ?? userDataPath,
   })
   return shellEnv

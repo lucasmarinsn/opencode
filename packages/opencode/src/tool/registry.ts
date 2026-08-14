@@ -27,6 +27,15 @@ import { Provider } from "@/provider/provider"
 
 import { WebSearchTool } from "./websearch"
 import { LspTool } from "./lsp"
+import {
+  OutlookCheckAvailabilityTool,
+  OutlookConnectTool,
+  OutlookCreateEventTool,
+  OutlookDraftEmailTool,
+  OutlookFinishConnectTool,
+  OutlookListEventsTool,
+  OutlookSendEmailTool,
+} from "./outlook"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "@opencode-ai/core/util/glob"
@@ -109,6 +118,13 @@ const layer = Layer.effect(
     const greptool = yield* GrepTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
+    const outlookConnect = yield* OutlookConnectTool
+    const outlookFinishConnect = yield* OutlookFinishConnectTool
+    const outlookListEvents = yield* OutlookListEventsTool
+    const outlookCheckAvailability = yield* OutlookCheckAvailabilityTool
+    const outlookCreateEvent = yield* OutlookCreateEventTool
+    const outlookDraftEmail = yield* OutlookDraftEmailTool
+    const outlookSendEmail = yield* OutlookSendEmailTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -214,6 +230,13 @@ const layer = Layer.effect(
           todo: Tool.init(todo),
           search: Tool.init(websearch),
           skill: Tool.init(skilltool),
+          outlookConnect: Tool.init(outlookConnect),
+          outlookFinishConnect: Tool.init(outlookFinishConnect),
+          outlookListEvents: Tool.init(outlookListEvents),
+          outlookCheckAvailability: Tool.init(outlookCheckAvailability),
+          outlookCreateEvent: Tool.init(outlookCreateEvent),
+          outlookDraftEmail: Tool.init(outlookDraftEmail),
+          outlookSendEmail: Tool.init(outlookSendEmail),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
@@ -237,6 +260,13 @@ const layer = Layer.effect(
             tool.todo,
             tool.search,
             tool.skill,
+            tool.outlookConnect,
+            tool.outlookFinishConnect,
+            tool.outlookListEvents,
+            tool.outlookCheckAvailability,
+            tool.outlookCreateEvent,
+            tool.outlookDraftEmail,
+            tool.outlookSendEmail,
             tool.patch,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),

@@ -1,4 +1,4 @@
-# Integracao Microsoft Outlook - plano tecnico
+# Integracao Microsoft Outlook
 
 ## Objetivo
 
@@ -6,7 +6,7 @@ Permitir que cada usuario conecte a propria conta Microsoft para consultar dispo
 
 ## Arquitetura escolhida
 
-O desktop sera um cliente publico Microsoft e usara Authorization Code com PKCE pelo navegador do sistema. Os tokens serao armazenados no cofre de credenciais do sistema operacional e as chamadas ao Microsoft Graph serao executadas localmente.
+O desktop e um cliente publico Microsoft e usa device code flow. Os tokens ficam gravados localmente no perfil de dados do app e as chamadas ao Microsoft Graph sao executadas localmente.
 
 Esta primeira arquitetura evita centralizar tokens do Outlook no Railway. Automacoes que precisem funcionar com o Fryn fechado exigirao uma fase posterior, com armazenamento criptografado no servidor, politica de retencao e auditoria adicionais.
 
@@ -32,19 +32,24 @@ Permissoes delegadas iniciais:
 
 Adicionar `Mail.Read` somente em uma versao posterior que leia ou resuma a caixa de entrada.
 
-## Ferramentas locais planejadas
+## Ferramentas locais implementadas
 
+- `outlook_connect`
+- `outlook_finish_connect`
 - `outlook_list_events`
 - `outlook_check_availability`
 - `outlook_create_event`
-- `outlook_update_event`
-- `outlook_cancel_event`
 - `outlook_draft_email`
 - `outlook_send_email`
 
+Ferramentas planejadas para uma proxima versao:
+
+- `outlook_update_event`
+- `outlook_cancel_event`
+
 ## Regra obrigatoria de confirmacao
 
-Consultar agenda e criar rascunhos pode ocorrer diretamente. Enviar e-mail, criar, alterar ou cancelar evento sempre exige uma previa estruturada e confirmacao explicita do usuario.
+Consultar agenda pode ocorrer diretamente. Criar rascunho, enviar e-mail e criar evento sempre exige confirmacao explicita do usuario.
 
 O registro de auditoria deve guardar horario, conta, tipo de acao e resultado, mas nunca tokens nem o corpo integral de mensagens.
 

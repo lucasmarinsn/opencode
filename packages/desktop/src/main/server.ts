@@ -88,6 +88,7 @@ export async function preferAppEnv(userDataPath: string) {
             cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
             limit: { context: 1048576, input: 900000, output: 65536 },
             modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+            capabilities: { tools: true, input: ["text", "image", "pdf"], output: ["text"] },
           },
         },
       },

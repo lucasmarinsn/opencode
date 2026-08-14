@@ -23,6 +23,7 @@ const LOGICAL_MODELS = [
     provider: "xiaomi-mimo",
     model: "mimo-v2.5-pro",
     modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+    capabilities: { tools: true, input: ["text", "image", "pdf"], output: ["text"] },
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
@@ -285,6 +286,7 @@ async function proxyAI(req, res, path) {
         object: "model",
         owned_by: "fryn",
         modalities: item.modalities,
+        capabilities: item.capabilities,
       })),
     })
   }

@@ -110,10 +110,11 @@ export function PromptInputV2(props: PromptInputV2Props) {
       <form
         data-component="prompt-input-v2"
         data-dock-border-underlay={props.borderUnderlay ? "v2" : undefined}
-        class="group/prompt-input relative min-h-[96px] w-full overflow-clip rounded-xl bg-v2-background-bg-base"
+        class="group/prompt-input relative min-h-[104px] w-full overflow-clip rounded-2xl border border-v2-border-border-muted bg-v2-background-bg-base/92 backdrop-blur"
         classList={{
-          "shadow-[var(--v2-elevation-raised)]": !props.borderUnderlay,
-          "border border-v2-icon-icon-info border-dashed": state.drag === "active",
+          "shadow-[0_18px_55px_rgba(15,23,42,0.10)]": !props.borderUnderlay,
+          "shadow-[0_14px_45px_rgba(15,23,42,0.08)]": props.borderUnderlay,
+          "border-v2-icon-icon-accent border-dashed": state.drag === "active",
         }}
         onSubmit={(event) => {
           event.preventDefault()
@@ -160,7 +161,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
             spellcheck={state.mode === "normal"}
             // @ts-expect-error
             autocomplete="off"
-            class="relative z-10 block min-h-[60px] max-h-[180px] w-full overflow-y-auto whitespace-pre-wrap bg-transparent px-4 pt-4 pb-2 text-[13px] font-[440] leading-5 text-v2-text-text-base focus:outline-none empty:before:content-['\200B'] [&_[data-mention=file]]:text-syntax-property [&_[data-mention=agent]]:text-syntax-type [&_[data-mention=reference]]:text-syntax-keyword"
+            class="relative z-10 block min-h-[64px] max-h-[190px] w-full overflow-y-auto whitespace-pre-wrap bg-transparent px-5 pt-5 pb-2 text-[14px] font-[440] leading-6 text-v2-text-text-base focus:outline-none empty:before:content-['\200B'] [&_[data-mention=file]]:text-syntax-property [&_[data-mention=agent]]:text-syntax-type [&_[data-mention=reference]]:text-syntax-keyword"
             classList={{ "font-mono!": state.mode === "shell", "opacity-50": props.disabled }}
             onInput={(event) => {
               const cursor = promptInputV2Cursor(event.currentTarget)
@@ -184,7 +185,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
           />
           <Show when={!props.controller.value()}>
             <div
-              class="pointer-events-none absolute inset-x-0 top-0 px-4 pt-4 text-[13px] font-[440] leading-5 text-v2-text-text-faint"
+              class="pointer-events-none absolute inset-x-0 top-0 px-5 pt-5 text-[14px] font-[440] leading-6 text-v2-text-text-faint"
               classList={{ "font-mono!": state.mode === "shell" }}
             >
               {view.placeholder?.() ??
@@ -195,7 +196,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
           </Show>
         </div>
 
-        <div class="flex h-11 items-center px-2">
+        <div class="flex h-12 items-center px-3 pb-1">
           <div
             class="flex min-w-0 flex-1 items-center gap-1"
             aria-hidden={state.mode === "shell"}
@@ -691,10 +692,10 @@ export function PromptInputV2SubmitButton(props: {
         tabIndex={props.mode === "normal" ? undefined : -1}
         icon={props.stopping ? "stop" : props.mode === "shell" ? "arrow-undo-down" : "arrow-up"}
         variant="primary"
-        class="size-7 rounded-md p-[6px] text-v2-icon-icon-muted shadow-[var(--v2-elevation-button-contrast)] disabled:opacity-50"
+        class="size-8 rounded-xl p-[7px] text-white shadow-[0_12px_28px_rgba(124,58,237,0.30)] disabled:opacity-50"
         style={{
           "background-image":
-            "linear-gradient(180deg,var(--v2-alpha-light-20) 0%,var(--v2-alpha-light-0) 100%),linear-gradient(90deg,var(--v2-background-bg-contrast) 0%,var(--v2-background-bg-contrast) 100%)",
+            "linear-gradient(180deg,rgba(255,255,255,0.28) 0%,rgba(255,255,255,0) 100%),linear-gradient(135deg,#7c3aed 0%,#2563eb 100%)",
         }}
         aria-label={props.stopping ? props.stopLabel : props.sendLabel}
         onClick={(event) => {

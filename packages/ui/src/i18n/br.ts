@@ -125,7 +125,7 @@ export const dict = {
   "ui.promptInput.removeAttachment": "Remover anexo",
   "ui.promptInput.label": "Prompt",
   "ui.promptInput.placeholder.shell": "Digite um comando do shell...",
-  "ui.promptInput.placeholder.normal": "Pergunte qualquer coisa, {{slash}} para comandos, {{at}} para contexto...",
+  "ui.promptInput.placeholder.normal": "Pergunte ao Fryn, envie PDF ou imagem, {{slash}} para comandos, {{at}} para contexto...",
   "ui.promptInput.add": "Adicionar imagens e arquivos",
   "ui.promptInput.attachments": "Imagens e arquivos",
   "ui.promptInput.context": "Contexto",

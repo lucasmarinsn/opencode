@@ -313,6 +313,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
     })),
   )
   const variants = createMemo(() => ["default", ...props.controls.model.selection.variant.list()])
+  const frynModel = createMemo(() => props.controls.model.selection.current()?.provider?.id === "fryn")
   const controller = createPromptInputV2Controller({
     store: () => prompt.capture().store,
     state: interaction,
@@ -388,11 +389,14 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
             }
           : undefined
       },
-      variant: {
-        options: () => variants().map((value) => ({ id: value, label: value })),
-        current: () => props.controls.model.selection.variant.current() ?? "default",
-        onSelect: (value) => props.controls.model.selection.variant.set(value === "default" ? undefined : value),
-        keybind: () => command.keybindParts("model.variant.cycle"),
+      get variant() {
+        if (frynModel()) return undefined
+        return {
+          options: () => variants().map((value) => ({ id: value, label: value })),
+          current: () => props.controls.model.selection.variant.current() ?? "default",
+          onSelect: (value) => props.controls.model.selection.variant.set(value === "default" ? undefined : value),
+          keybind: () => command.keybindParts("model.variant.cycle"),
+        }
       },
       submit: {
         stopping,

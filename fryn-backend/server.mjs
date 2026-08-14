@@ -16,19 +16,22 @@ const MIMO_API_KEY = requiredEnv("MIMO_API_KEY")
 const UPSTREAM_BASE_URL = normalizeBaseUrl(
   process.env.MIMO_BASE_URL || "https://token-plan-sgp.xiaomimimo.com/v1",
 )
+const MIMO_TEXT_MODEL = process.env.MIMO_TEXT_MODEL || "mimo-v2.5-pro"
+const MIMO_MULTIMODAL_MODEL = process.env.MIMO_MULTIMODAL_MODEL || "mimo-v2.5"
 const LOGICAL_MODELS = [
   {
     id: "assistant",
     name: "Fryn AI",
     provider: "xiaomi-mimo",
-    model: "mimo-v2.5-pro",
+    model: MIMO_TEXT_MODEL,
+    multimodalModel: MIMO_MULTIMODAL_MODEL,
     modalities: { input: ["text", "image", "pdf"], output: ["text"] },
     capabilities: { tools: true, input: ["text", "image", "pdf"], output: ["text"] },
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"
 const LEGACY_LOGICAL_MODELS = new Set(["assistant", "fryn-code", "fryn-fast", "fryn-expert", "fryn-plan", "fryn-vision"])
-const KNOWN_MODELS = LOGICAL_MODELS.map((item) => item.model)
+const KNOWN_MODELS = Array.from(new Set(LOGICAL_MODELS.flatMap((item) => [item.model, item.multimodalModel].filter(Boolean))))
 
 const rateWindows = new Map()
 const routeMetrics = new Map(LOGICAL_MODELS.map((item) => [item.id, { requests: 0, successes: 0, failures: 0, totalLatencyMs: 0, lastLatencyMs: 0, lastStatus: null }]))
@@ -272,6 +275,28 @@ function sanitizeUpstream(value) {
     .replace(/opencode(?: zen)?/gi, "Fryn AI")
 }
 
+function hasMultimodalInput(value) {
+  if (value === null || value === undefined) return false
+  if (typeof value === "string") {
+    const text = value.toLowerCase()
+    return text.startsWith("data:image/") || text.startsWith("data:application/pdf") || text.endsWith(".pdf")
+  }
+  if (Array.isArray(value)) return value.some(hasMultimodalInput)
+  if (typeof value !== "object") return false
+
+  for (const [key, raw] of Object.entries(value)) {
+    const name = key.toLowerCase()
+    if (typeof raw === "string") {
+      const text = raw.toLowerCase()
+      if ((name === "type" || name === "media_type") && /image|pdf|input_image|image_url/.test(text)) return true
+      if ((name === "mime" || name === "content_type") && /image\/|application\/pdf/.test(text)) return true
+      if (name === "url" && (text.startsWith("data:image/") || text.startsWith("data:application/pdf") || text.endsWith(".pdf"))) return true
+    }
+    if (hasMultimodalInput(raw)) return true
+  }
+  return false
+}
+
 async function proxyAI(req, res, path) {
   const license = licenseFromRequest(req)
   if (!license) return json(res, 401, { error: "Fryn nao autorizado." })
@@ -311,7 +336,8 @@ async function proxyAI(req, res, path) {
   const metric = routeMetrics.get(route.id)
   metric.requests++
   const attempts = []
-  const attemptBody = { ...body, model: route.model }
+  const upstreamModel = hasMultimodalInput(body) ? route.multimodalModel : route.model
+  const attemptBody = { ...body, model: upstreamModel }
   delete attemptBody.models
   delete attemptBody.provider
   attempts.push({ kind: route.id, body: attemptBody, apiKey: MIMO_API_KEY })

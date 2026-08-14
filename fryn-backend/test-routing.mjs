@@ -6,7 +6,8 @@ import { join } from "node:path"
 
 const upstreamPort = 18991
 const backendPort = 18992
-const expectedModel = "mimo-v2.5-pro"
+const expectedTextModel = "mimo-v2.5-pro"
+const expectedMultimodalModel = "mimo-v2.5"
 let lastBody
 
 const upstream = createServer(async (req, res) => {
@@ -15,13 +16,13 @@ const upstream = createServer(async (req, res) => {
   lastBody = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")
   if (lastBody.stream) {
     res.writeHead(200, { "content-type": "text/event-stream" })
-    res.write(`data: ${JSON.stringify({ id: "x", model: expectedModel, choices: [{ delta: { content: "ok" } }] })}\n\n`)
+    res.write(`data: ${JSON.stringify({ id: "x", model: lastBody.model, choices: [{ delta: { content: "ok" } }] })}\n\n`)
     res.end("data: [DONE]\n\n")
     return
   }
   const data = JSON.stringify({
     id: "x",
-    model: expectedModel,
+    model: lastBody.model,
     choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
   })
   res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(data) })
@@ -69,6 +70,7 @@ try {
   }).then((response) => response.json())
   assert.deepEqual(models.data.map((item) => item.id), ["assistant"])
   assert.deepEqual(models.data[0].modalities, { input: ["text", "image", "pdf"], output: ["text"] })
+  assert.deepEqual(models.data[0].capabilities, { tools: true, input: ["text", "image", "pdf"], output: ["text"] })
 
   for (const model of ["assistant", "fryn-code", "fryn-fast", "fryn-expert", "fryn-plan", "fryn-vision"]) {
     const response = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
@@ -78,12 +80,31 @@ try {
     })
     const text = await response.text()
     assert.equal(response.status, 200)
-    assert.equal(lastBody.model, expectedModel)
+    assert.equal(lastBody.model, expectedTextModel)
     assert.equal("models" in lastBody, false)
     assert.equal("provider" in lastBody, false)
     assert.ok(text.includes('"model":"Fryn AI"'))
     assert.ok(!/xiaomi|openrouter|north|mimo|opencode|zen/i.test(text))
   }
+
+  const vision = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "assistant",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "describe" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+          ],
+        },
+      ],
+    }),
+  })
+  assert.equal(vision.status, 200)
+  assert.equal(lastBody.model, expectedMultimodalModel)
 
   const invalid = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
     method: "POST",

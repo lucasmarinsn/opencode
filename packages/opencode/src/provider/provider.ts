@@ -1434,12 +1434,14 @@ const layer = Layer.effect(
 
         // now read config providers - includes any modifications from plugin config() hook
         const configProviders = Object.entries(cfg.provider ?? {})
+        const configuredProviderIDs = new Set(configProviders.map(([providerID]) => ProviderV2.ID.make(providerID)))
         const disabled = new Set(cfg.disabled_providers ?? [])
         const enabled = cfg.enabled_providers ? new Set(cfg.enabled_providers) : null
 
         function isProviderAllowed(providerID: ProviderV2.ID): boolean {
-          if (enabled && !enabled.has(providerID)) return false
           if (disabled.has(providerID)) return false
+          if (configuredProviderIDs.has(providerID)) return true
+          if (enabled && !enabled.has(providerID)) return false
           return true
         }
 

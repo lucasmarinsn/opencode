@@ -153,6 +153,38 @@ it.instance(
 )
 
 it.instance(
+  "enabled_providers still allows explicitly configured providers",
+  Effect.gen(function* () {
+    yield* setProcessEnv("ANTHROPIC_API_KEY", "test-api-key")
+    const providers = yield* list
+    expect(providers[ProviderV2.ID.make("fryn")]).toBeDefined()
+    expect(providers[ProviderV2.ID.make("custom-provider")]).toBeDefined()
+    expect(providers[ProviderV2.ID.anthropic]).toBeUndefined()
+  }),
+  {
+    config: {
+      enabled_providers: ["fryn"],
+      provider: {
+        fryn: {
+          name: "Fryn AI",
+          npm: "@ai-sdk/openai-compatible",
+          api: "https://fryn.example/v1",
+          models: { assistant: { name: "Fryn AI" } },
+          options: { apiKey: "fryn-key" },
+        },
+        "custom-provider": {
+          name: "Custom Provider",
+          npm: "@ai-sdk/openai-compatible",
+          api: "https://api.custom.com/v1",
+          models: { "custom-model": { name: "Custom Model" } },
+          options: { apiKey: "custom-key" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
   "model whitelist filters models for provider",
   Effect.gen(function* () {
     yield* setProcessEnv("ANTHROPIC_API_KEY", "test-api-key")

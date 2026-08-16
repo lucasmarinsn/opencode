@@ -57,6 +57,7 @@ export async function preferAppEnv(userDataPath: string) {
   const frynConfig = {
     autoupdate: false,
     share: "disabled",
+    enabled_providers: ["fryn"],
     model: "fryn/assistant",
     small_model: "fryn/assistant",
     default_agent: "fryn",

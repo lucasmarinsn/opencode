@@ -12,20 +12,33 @@ const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 6
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
 const ADMIN_TOKEN = requiredEnv("FRYN_ADMIN_TOKEN")
-const MIMO_API_KEY = requiredEnv("MIMO_API_KEY")
+const UPSTREAM_PROVIDER = (process.env.FRYN_UPSTREAM_PROVIDER || "opencode").trim().toLowerCase()
 const UPSTREAM_BASE_URL = normalizeBaseUrl(
-  process.env.MIMO_BASE_URL || "https://token-plan-sgp.xiaomimimo.com/v1",
+  process.env.FRYN_UPSTREAM_BASE_URL ||
+    process.env.OPENCODE_BASE_URL ||
+    (UPSTREAM_PROVIDER === "mimo" ? process.env.MIMO_BASE_URL : undefined) ||
+    (UPSTREAM_PROVIDER === "mimo" ? "https://token-plan-sgp.xiaomimimo.com/v1" : "https://opencode.ai/zen/v1"),
 )
-const MIMO_TEXT_MODEL = process.env.MIMO_TEXT_MODEL || "mimo-v2.5"
-const MIMO_MULTIMODAL_MODEL = process.env.MIMO_MULTIMODAL_MODEL || "mimo-v2.5"
+const UPSTREAM_API_KEY =
+  UPSTREAM_PROVIDER === "mimo"
+    ? requiredEnv("MIMO_API_KEY")
+    : process.env.OPENCODE_API_KEY?.trim() || process.env.FRYN_UPSTREAM_API_KEY?.trim() || "public"
+const UPSTREAM_TEXT_MODEL =
+  process.env.FRYN_UPSTREAM_TEXT_MODEL ||
+  process.env.OPENCODE_MODEL ||
+  (UPSTREAM_PROVIDER === "mimo" ? process.env.MIMO_TEXT_MODEL || "mimo-v2.5" : "gpt-5-nano")
+const UPSTREAM_MULTIMODAL_MODEL =
+  process.env.FRYN_UPSTREAM_MULTIMODAL_MODEL ||
+  process.env.OPENCODE_MULTIMODAL_MODEL ||
+  (UPSTREAM_PROVIDER === "mimo" ? process.env.MIMO_MULTIMODAL_MODEL || "mimo-v2.5" : UPSTREAM_TEXT_MODEL)
 const DEFAULT_MAX_COMPLETION_TOKENS = integerEnv("FRYN_MAX_COMPLETION_TOKENS", 4096, 256, 32768)
 const LOGICAL_MODELS = [
   {
     id: "assistant",
     name: "Fryn AI",
-    provider: "xiaomi-mimo",
-    model: MIMO_TEXT_MODEL,
-    multimodalModel: MIMO_MULTIMODAL_MODEL,
+    provider: UPSTREAM_PROVIDER === "mimo" ? "xiaomi-mimo" : "opencode-free",
+    model: UPSTREAM_TEXT_MODEL,
+    multimodalModel: UPSTREAM_MULTIMODAL_MODEL,
     modalities: { input: ["text", "image", "pdf"], output: ["text"] },
     capabilities: { tools: true, input: ["text", "image", "pdf"], output: ["text"] },
   },
@@ -33,6 +46,7 @@ const LOGICAL_MODELS = [
 const DEFAULT_LOGICAL_MODEL = "assistant"
 const LEGACY_LOGICAL_MODELS = new Set(["assistant", "fryn-code", "fryn-fast", "fryn-expert", "fryn-plan", "fryn-vision"])
 const KNOWN_MODELS = Array.from(new Set(LOGICAL_MODELS.flatMap((item) => [item.model, item.multimodalModel].filter(Boolean))))
+const UPSTREAM_PROVIDER_LABEL = UPSTREAM_PROVIDER === "mimo" ? "Xiaomi MiMo" : "OpenCode Zen Free"
 
 const rateWindows = new Map()
 const routeMetrics = new Map(LOGICAL_MODELS.map((item) => [item.id, { requests: 0, successes: 0, failures: 0, totalLatencyMs: 0, lastLatencyMs: 0, lastStatus: null }]))
@@ -61,7 +75,7 @@ function integerEnv(name, fallback, min, max) {
 
 function normalizeBaseUrl(value) {
   const url = new URL(value)
-  if (!/^https?:$/.test(url.protocol)) throw new Error("MIMO_BASE_URL precisa usar http ou https")
+  if (!/^https?:$/.test(url.protocol)) throw new Error("FRYN_UPSTREAM_BASE_URL precisa usar http ou https")
   return url.toString().replace(/\/$/, "")
 }
 
@@ -344,7 +358,7 @@ async function proxyAI(req, res, path) {
   if (attemptBody.max_completion_tokens === undefined && attemptBody.max_tokens === undefined) {
     attemptBody.max_completion_tokens = DEFAULT_MAX_COMPLETION_TOKENS
   }
-  attempts.push({ kind: route.id, body: attemptBody, apiKey: MIMO_API_KEY })
+  attempts.push({ kind: route.id, body: attemptBody, apiKey: UPSTREAM_API_KEY })
 
   function retryableStatus(status, detail = "") {
     const retryableHttp = status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
@@ -529,7 +543,7 @@ const server = createServer(async (req, res) => {
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: false,
-          provider: "xiaomi-mimo-v2.5",
+          provider: UPSTREAM_PROVIDER_LABEL,
         },
       })
     }
@@ -553,5 +567,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log("[Fryn] Provedor upstream: Xiaomi MiMo | V2.5")
+  console.log(`[Fryn] Provedor upstream: ${UPSTREAM_PROVIDER_LABEL} | ${LOGICAL_MODELS[0].model}`)
 })

@@ -6,8 +6,8 @@ import { join } from "node:path"
 
 const upstreamPort = 18991
 const backendPort = 18992
-const expectedTextModel = "mimo-v2.5-pro"
-const expectedMultimodalModel = "mimo-v2.5"
+const expectedTextModel = "gpt-5-nano"
+const expectedMultimodalModel = "gpt-5-nano"
 let lastBody
 
 const upstream = createServer(async (req, res) => {
@@ -34,8 +34,10 @@ const dataDir = await mkdtemp(join(tmpdir(), "fryn-router-test-"))
 process.env.PORT = String(backendPort)
 process.env.FRYN_DATA_DIR = dataDir
 process.env.FRYN_ADMIN_TOKEN = "test-admin-token"
-process.env.MIMO_API_KEY = "test-mimo-key"
-process.env.MIMO_BASE_URL = `http://127.0.0.1:${upstreamPort}`
+delete process.env.MIMO_API_KEY
+delete process.env.MIMO_BASE_URL
+process.env.FRYN_UPSTREAM_PROVIDER = "opencode"
+process.env.FRYN_UPSTREAM_BASE_URL = `http://127.0.0.1:${upstreamPort}`
 const { server } = await import(`./server.mjs?test=${Date.now()}`)
 
 async function waitForHealth() {
@@ -54,7 +56,7 @@ try {
   assert.equal(health.routing.mode, "direct")
   assert.deepEqual(health.routing.models, ["assistant"])
   assert.equal(health.routing.paidFallback, false)
-  assert.equal(health.routing.provider, "xiaomi-mimo-v2.5-pro")
+  assert.equal(health.routing.provider, "OpenCode Zen Free")
 
   const activation = await fetch(`http://127.0.0.1:${backendPort}/api/activate`, {
     method: "POST",

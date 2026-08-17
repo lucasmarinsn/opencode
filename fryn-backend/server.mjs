@@ -12,12 +12,11 @@ const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 6
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
 const ADMIN_TOKEN = requiredEnv("FRYN_ADMIN_TOKEN")
-const UPSTREAM_PROVIDER = (process.env.FRYN_UPSTREAM_PROVIDER || "opencode").trim().toLowerCase()
+const UPSTREAM_PROVIDER = (process.env.FRYN_UPSTREAM_PROVIDER || "mimo").trim().toLowerCase()
 const UPSTREAM_BASE_URL = normalizeBaseUrl(
   process.env.FRYN_UPSTREAM_BASE_URL ||
-    process.env.OPENCODE_BASE_URL ||
     (UPSTREAM_PROVIDER === "mimo" ? process.env.MIMO_BASE_URL : undefined) ||
-    (UPSTREAM_PROVIDER === "mimo" ? "https://token-plan-sgp.xiaomimimo.com/v1" : "https://opencode.ai/zen/v1"),
+    "https://token-plan-sgp.xiaomimimo.com/v1",
 )
 const UPSTREAM_API_KEY =
   UPSTREAM_PROVIDER === "mimo"
@@ -25,13 +24,11 @@ const UPSTREAM_API_KEY =
     : process.env.OPENCODE_API_KEY?.trim() || process.env.FRYN_UPSTREAM_API_KEY?.trim() || "public"
 const UPSTREAM_TEXT_MODEL =
   process.env.FRYN_UPSTREAM_TEXT_MODEL ||
-  process.env.OPENCODE_MODEL ||
   (UPSTREAM_PROVIDER === "mimo" ? process.env.MIMO_TEXT_MODEL || "mimo-v2.5" : "gpt-5-nano")
 const UPSTREAM_MULTIMODAL_MODEL =
   process.env.FRYN_UPSTREAM_MULTIMODAL_MODEL ||
-  process.env.OPENCODE_MULTIMODAL_MODEL ||
   (UPSTREAM_PROVIDER === "mimo" ? process.env.MIMO_MULTIMODAL_MODEL || "mimo-v2.5" : UPSTREAM_TEXT_MODEL)
-const DEFAULT_MAX_COMPLETION_TOKENS = integerEnv("FRYN_MAX_COMPLETION_TOKENS", 4096, 256, 32768)
+const DEFAULT_MAX_COMPLETION_TOKENS = integerEnv("FRYN_MAX_COMPLETION_TOKENS", 2048, 256, 32768)
 const LOGICAL_MODELS = [
   {
     id: "assistant",

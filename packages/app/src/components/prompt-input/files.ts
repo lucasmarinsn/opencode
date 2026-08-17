@@ -51,6 +51,10 @@ const TEXT_MIMES = new Set([
   "application/xml",
   "application/yaml",
 ])
+const SPREADSHEET_MIMES = new Map([
+  ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  ["application/vnd.ms-excel", "application/vnd.ms-excel"],
+])
 
 const SAMPLE = 4096
 
@@ -86,9 +90,18 @@ export async function attachmentMime(file: File) {
   const type = kind(file.type)
   if (IMAGE_MIMES.has(type)) return type
   if (type === "application/pdf") return type
+  if (SPREADSHEET_MIMES.has(type)) return SPREADSHEET_MIMES.get(type)
 
   const suffix = ext(file.name)
-  const fallback = IMAGE_EXTS.get(suffix) ?? (suffix === "pdf" ? "application/pdf" : undefined)
+  const fallback =
+    IMAGE_EXTS.get(suffix) ??
+    (suffix === "pdf"
+      ? "application/pdf"
+      : suffix === "xlsx"
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : suffix === "xls"
+          ? "application/vnd.ms-excel"
+          : undefined)
   if ((!type || type === "application/octet-stream") && fallback) return fallback
 
   if (textMime(type)) return "text/plain"

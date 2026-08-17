@@ -65,10 +65,15 @@ const decodeMessagePart = Schema.decodeUnknownExit(SessionV1.Part)
 const MAX_MCP_RESOURCE_BLOB_BYTES = 10 * 1024 * 1024
 const SUPPORTED_MCP_RESOURCE_ATTACHMENT_MIMES = new Set([
   "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "image/gif",
   "image/jpeg",
   "image/png",
   "image/webp",
+])
+const SPREADSHEET_ATTACHMENT_MIMES = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
 ])
 
 const STRUCTURED_OUTPUT_DESCRIPTION = `Use this tool to return your final response in the requested structured format.
@@ -943,6 +948,45 @@ const layer = Layer.effect(
                     text: exit.value.output,
                   },
                   { ...part, mime, messageID: info.id, sessionID: input.sessionID },
+                ]
+              }
+
+              if (SPREADSHEET_ATTACHMENT_MIMES.has(mime)) {
+                const args = { filePath: filepath }
+                const exit = yield* execRead(args).pipe(Effect.exit)
+                if (Exit.isFailure(exit)) {
+                  const error = Cause.squash(exit.cause)
+                  yield* Effect.logError("failed to read spreadsheet", { error, filepath })
+                  const message = error instanceof Error ? error.message : String(error)
+                  yield* events.publish(Session.Event.Error, {
+                    sessionID: input.sessionID,
+                    error: new NamedError.Unknown({ message }).toObject(),
+                  })
+                  return [
+                    {
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "text",
+                      synthetic: true,
+                      text: `Read tool failed to read ${filepath} with the following error: ${message}`,
+                    },
+                  ]
+                }
+                return [
+                  {
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: `Called the Read tool with the following input: ${JSON.stringify(args)}`,
+                  },
+                  {
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: exit.value.output,
+                  },
                 ]
               }
 

@@ -64,9 +64,9 @@ export async function preferAppEnv(userDataPath: string) {
     compaction: {
       auto: true,
       prune: true,
-      reserved: 100000,
+      reserved: 24000,
       tail_turns: 2,
-      preserve_recent_tokens: 8000,
+      preserve_recent_tokens: 4000,
     },
     agent: {
       fryn: {
@@ -143,7 +143,7 @@ export async function preferAppEnv(userDataPath: string) {
             temperature: true,
             tool_call: true,
             cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
-            limit: { context: 1048576, input: 900000, output: 65536 },
+            limit: { context: 128000, input: 96000, output: 8192 },
             modalities: { input: ["text", "image", "pdf"], output: ["text"] },
             capabilities: { tools: true, input: ["text", "image", "pdf"], output: ["text"] },
           },

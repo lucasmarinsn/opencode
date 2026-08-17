@@ -9,6 +9,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { Instruction } from "../session/instruction"
 import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
+import { TextWriter, Uint8ArrayReader, ZipReader } from "@zip.js/zip.js"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -17,8 +18,119 @@ const MAX_BYTES = 50 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+const EXCEL_MIMES = new Set([XLSX_MIME, "application/vnd.ms-excel"])
+const XLSX_MAX_SHEETS = 8
+const XLSX_MAX_ROWS = 120
+const XLSX_MAX_COLS = 30
+const XLSX_MAX_PREVIEW_LINES = 20
 
 class ReadStop extends Schema.TaggedErrorClass<ReadStop>()("ReadStop", {}) {}
+
+function xmlText(input: string) {
+  return input
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+}
+
+function cellColumn(ref: string) {
+  const letters = /^[A-Z]+/i.exec(ref)?.[0]?.toUpperCase() ?? "A"
+  let index = 0
+  for (const letter of letters) index = index * 26 + letter.charCodeAt(0) - 64
+  return Math.max(0, index - 1)
+}
+
+async function readXlsxEntries(bytes: Uint8Array) {
+  const reader = new ZipReader(new Uint8ArrayReader(bytes))
+  try {
+    const entries = await reader.getEntries()
+    const out = new Map<string, string>()
+    for (const entry of entries) {
+      if (entry.directory || !entry.getData) continue
+      const name = entry.filename.replace(/\\/g, "/")
+      if (
+        name === "xl/workbook.xml" ||
+        name === "xl/_rels/workbook.xml.rels" ||
+        name === "xl/sharedStrings.xml" ||
+        name.startsWith("xl/worksheets/")
+      ) {
+        const text = await entry.getData(new TextWriter())
+        out.set(name, String(text))
+      }
+    }
+    return out
+  } finally {
+    await reader.close().catch(() => undefined)
+  }
+}
+
+function parseSharedStrings(xml: string | undefined) {
+  if (!xml) return []
+  return Array.from(xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)).map((match) =>
+    Array.from((match[1] ?? "").matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g))
+      .map((text) => xmlText(text[1] ?? ""))
+      .join(""),
+  )
+}
+
+function parseWorkbookSheets(entries: Map<string, string>) {
+  const workbook = entries.get("xl/workbook.xml") ?? ""
+  const rels = entries.get("xl/_rels/workbook.xml.rels") ?? ""
+  const targets = new Map(
+    Array.from(rels.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g)).map((match) => [
+      match[1],
+      (match[2] ?? "").startsWith("/") ? (match[2] ?? "").slice(1) : `xl/${match[2] ?? ""}`,
+    ]),
+  )
+  return Array.from(workbook.matchAll(/<sheet\b[^>]*name="([^"]+)"[^>]*(?:r:id|id)="([^"]+)"/g))
+    .map((match, index) => ({
+      name: xmlText(match[1] ?? `Sheet ${index + 1}`),
+      path: targets.get(match[2] ?? "")?.replace(/\/\.\//g, "/") ?? `xl/worksheets/sheet${index + 1}.xml`,
+    }))
+    .filter((sheet) => entries.has(sheet.path))
+}
+
+function parseSheet(xml: string, shared: string[]) {
+  const rows: string[][] = []
+  for (const row of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+    const values: string[] = []
+    for (const cell of (row[1] ?? "").matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
+      const attrs = cell[1] ?? ""
+      const body = cell[2] ?? ""
+      const ref = /\br="([^"]+)"/.exec(attrs)?.[1] ?? ""
+      const type = /\bt="([^"]+)"/.exec(attrs)?.[1] ?? ""
+      const col = ref ? cellColumn(ref) : values.length
+      if (col >= XLSX_MAX_COLS) continue
+      const raw =
+        /<v\b[^>]*>([\s\S]*?)<\/v>/.exec(body)?.[1] ?? /<t\b[^>]*>([\s\S]*?)<\/t>/.exec(body)?.[1] ?? ""
+      const value = type === "s" ? (shared[Number(raw)] ?? "") : xmlText(raw)
+      values[col] = value.replace(/\s+/g, " ").trim()
+    }
+    if (values.some(Boolean)) rows.push(values)
+    if (rows.length >= XLSX_MAX_ROWS) break
+  }
+  return rows
+}
+
+async function extractXlsxText(filepath: string, bytes: Uint8Array) {
+  const entries = await readXlsxEntries(bytes)
+  const sheets = parseWorkbookSheets(entries).slice(0, XLSX_MAX_SHEETS)
+  const shared = parseSharedStrings(entries.get("xl/sharedStrings.xml"))
+  const blocks = [`<path>${filepath}</path>`, "<type>spreadsheet</type>"]
+  for (const sheet of sheets) {
+    const rows = parseSheet(entries.get(sheet.path) ?? "", shared)
+    blocks.push(`<sheet name="${sheet.name}">`)
+    blocks.push(rows.map((row, index) => `${index + 1}: ${row.map((cell) => cell || "").join("\t")}`).join("\n"))
+    if (rows.length >= XLSX_MAX_ROWS) blocks.push(`(Showing first ${XLSX_MAX_ROWS} non-empty rows.)`)
+    blocks.push("</sheet>")
+  }
+  if (sheets.length === 0) blocks.push("(No readable worksheets found.)")
+  return blocks.join("\n")
+}
 
 // `offset` and `limit` were originally `z.coerce.number()` — the runtime
 // coercion was useful when the tool was called from a shell but serves no
@@ -321,6 +433,36 @@ export const ReadTool = Tool.define<
               url: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`,
             },
           ],
+        }
+      }
+
+      if (EXCEL_MIMES.has(mime) || [".xlsx", ".xls"].includes(path.extname(filepath).toLowerCase())) {
+        if (path.extname(filepath).toLowerCase() === ".xls") {
+          return yield* Effect.fail(
+            new Error(`Fryn can read modern Excel files (.xlsx). Please save this legacy .xls file as .xlsx or .csv: ${filepath}`),
+          )
+        }
+        const bytes = yield* fs.readFile(filepath)
+        const output = yield* Effect.promise(() => extractXlsxText(filepath, bytes))
+        const preview = output.split("\n").slice(0, XLSX_MAX_PREVIEW_LINES).join("\n")
+        const truncated = output.includes(`Showing first ${XLSX_MAX_ROWS}`)
+        return {
+          title,
+          output,
+          metadata: {
+            preview,
+            truncated,
+            loaded: loaded.map((item) => item.filepath),
+            display: {
+              type: "file" as const,
+              path: filepath,
+              text: preview,
+              lineStart: 1,
+              lineEnd: preview.split("\n").length,
+              totalLines: output.split("\n").length,
+              truncated,
+            },
+          },
         }
       }
 

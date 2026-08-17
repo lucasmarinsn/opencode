@@ -51,6 +51,8 @@ const parseCommentMentions = (comment: string) => {
 
 const isFileAttachment = (part: Prompt[number]): part is FileAttachmentPart => part.type === "file"
 const isAgentAttachment = (part: Prompt[number]): part is AgentPart => part.type === "agent"
+const isSpreadsheetAttachment = (mime: string) =>
+  mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || mime === "application/vnd.ms-excel"
 
 const toOptimisticPart = (part: PromptRequestPart, sessionID: string, messageID: string): Part => {
   if (part.type === "text") {
@@ -195,6 +197,18 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
   })
 
   const images = input.images.map((attachment) => {
+    const sourcePath = attachment.sourcePath
+    if (sourcePath && isSpreadsheetAttachment(attachment.mime)) {
+      const path = absolute(input.sessionDirectory, sourcePath)
+      return {
+        id: Identifier.ascending("part"),
+        type: "file",
+        mime: attachment.mime,
+        url: `file://${encodeFilePath(path)}`,
+        filename: attachment.filename,
+      } satisfies PromptRequestPart
+    }
+
     return {
       id: Identifier.ascending("part"),
       type: "file",

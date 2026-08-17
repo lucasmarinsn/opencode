@@ -8,6 +8,8 @@ const accepted = [
   "image/gif",
   "image/webp",
   "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
   "text/*",
   "application/json",
   "application/ld+json",
@@ -25,6 +27,8 @@ const accepted = [
   ".csv",
   ".cts",
   ".env",
+  ".xls",
+  ".xlsx",
   ".go",
   ".gql",
   ".graphql",
@@ -243,13 +247,29 @@ const textMimes = new Set([
   "application/xml",
   "application/yaml",
 ])
+const spreadsheetMimes = new Map([
+  [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ],
+  ["application/vnd.ms-excel", "application/vnd.ms-excel"],
+])
 
 async function attachmentMime(file: File) {
   const type = file.type.split(";", 1)[0]?.trim().toLowerCase() ?? ""
   if (imageMimes.has(type) || type === "application/pdf") return type
+  if (spreadsheetMimes.has(type)) return spreadsheetMimes.get(type)
   const index = file.name.lastIndexOf(".")
   const suffix = index === -1 ? "" : file.name.slice(index + 1).toLowerCase()
-  const fallback = imageExtensions.get(suffix) ?? (suffix === "pdf" ? "application/pdf" : undefined)
+  const fallback =
+    imageExtensions.get(suffix) ??
+    (suffix === "pdf"
+      ? "application/pdf"
+      : suffix === "xlsx"
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : suffix === "xls"
+          ? "application/vnd.ms-excel"
+          : undefined)
   if ((!type || type === "application/octet-stream") && fallback) return fallback
   if (type.startsWith("text/") || textMimes.has(type) || type.endsWith("+json") || type.endsWith("+xml")) {
     return "text/plain"

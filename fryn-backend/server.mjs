@@ -16,8 +16,9 @@ const MIMO_API_KEY = requiredEnv("MIMO_API_KEY")
 const UPSTREAM_BASE_URL = normalizeBaseUrl(
   process.env.MIMO_BASE_URL || "https://token-plan-sgp.xiaomimimo.com/v1",
 )
-const MIMO_TEXT_MODEL = process.env.MIMO_TEXT_MODEL || "mimo-v2.5-pro"
+const MIMO_TEXT_MODEL = process.env.MIMO_TEXT_MODEL || "mimo-v2.5"
 const MIMO_MULTIMODAL_MODEL = process.env.MIMO_MULTIMODAL_MODEL || "mimo-v2.5"
+const DEFAULT_MAX_COMPLETION_TOKENS = integerEnv("FRYN_MAX_COMPLETION_TOKENS", 4096, 256, 32768)
 const LOGICAL_MODELS = [
   {
     id: "assistant",
@@ -340,6 +341,9 @@ async function proxyAI(req, res, path) {
   const attemptBody = { ...body, model: upstreamModel }
   delete attemptBody.models
   delete attemptBody.provider
+  if (attemptBody.max_completion_tokens === undefined && attemptBody.max_tokens === undefined) {
+    attemptBody.max_completion_tokens = DEFAULT_MAX_COMPLETION_TOKENS
+  }
   attempts.push({ kind: route.id, body: attemptBody, apiKey: MIMO_API_KEY })
 
   function retryableStatus(status, detail = "") {
@@ -525,7 +529,7 @@ const server = createServer(async (req, res) => {
           defaultModel: DEFAULT_LOGICAL_MODEL,
           models: LOGICAL_MODELS.map((item) => item.id),
           paidFallback: false,
-          provider: "xiaomi-mimo-v2.5-pro",
+          provider: "xiaomi-mimo-v2.5",
         },
       })
     }
@@ -549,5 +553,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[Fryn] Modelo unico ativo | ${LOGICAL_MODELS[0].id} | fallback pago desativado`,
   )
-  console.log("[Fryn] Provedor upstream: Xiaomi MiMo | V2.5 Pro")
+  console.log("[Fryn] Provedor upstream: Xiaomi MiMo | V2.5")
 })

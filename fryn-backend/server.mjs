@@ -9,6 +9,8 @@ const MAX_LICENSES = integerEnv("FRYN_MAX_LICENSES", 12, 1, 1000)
 const REQUESTS_PER_MINUTE = integerEnv("FRYN_REQUESTS_PER_MINUTE", 30, 1, 10000)
 const MAX_BODY_BYTES = integerEnv("FRYN_MAX_BODY_MB", 50, 1, 500) * 1024 * 1024
 const UPSTREAM_TIMEOUT_MS = integerEnv("FRYN_UPSTREAM_TIMEOUT_SECONDS", 45, 5, 600) * 1000
+const UPSTREAM_RETRIES = integerEnv("FRYN_UPSTREAM_RETRIES", 2, 0, 5)
+const UPSTREAM_RETRY_DELAY_MS = integerEnv("FRYN_UPSTREAM_RETRY_DELAY_MS", 1200, 100, 10000)
 const DATA_DIR = resolve(process.env.FRYN_DATA_DIR || "./data")
 const DB_PATH = join(DATA_DIR, "licenses.json")
 const ADMIN_TOKEN = requiredEnv("FRYN_ADMIN_TOKEN")
@@ -74,6 +76,10 @@ function normalizeBaseUrl(value) {
   const url = new URL(value)
   if (!/^https?:$/.test(url.protocol)) throw new Error("FRYN_UPSTREAM_BASE_URL precisa usar http ou https")
   return url.toString().replace(/\/$/, "")
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function cleanText(value, max = 160) {
@@ -355,7 +361,13 @@ async function proxyAI(req, res, path) {
   if (attemptBody.max_completion_tokens === undefined && attemptBody.max_tokens === undefined) {
     attemptBody.max_completion_tokens = DEFAULT_MAX_COMPLETION_TOKENS
   }
-  attempts.push({ kind: route.id, body: attemptBody, apiKey: UPSTREAM_API_KEY })
+  for (let retry = 0; retry <= UPSTREAM_RETRIES; retry++) {
+    attempts.push({
+      kind: retry === 0 ? route.id : `${route.id}:retry-${retry}`,
+      body: attemptBody,
+      apiKey: UPSTREAM_API_KEY,
+    })
+  }
 
   function retryableStatus(status, detail = "") {
     const retryableHttp = status === 404 || status === 408 || status === 409 || status === 429 || status === 502 || status === 503 || status === 504
@@ -381,19 +393,23 @@ async function proxyAI(req, res, path) {
       })
     } catch (error) {
       console.error(`[Fryn] Falha no upstream (${attempt.kind}):`, error?.message || error)
-      if (index < attempts.length - 1) continue
+      if (index < attempts.length - 1) {
+        await wait(UPSTREAM_RETRY_DELAY_MS)
+        continue
+      }
       metric.lastLatencyMs = Date.now() - startedAt
       metric.totalLatencyMs += metric.lastLatencyMs
       metric.lastStatus = 502
       metric.failures++
-      return json(res, 502, { error: "Fryn AI indisponivel no momento." })
+      return json(res, 502, { error: "O Fryn AI ficou indisponivel por alguns segundos. Tente novamente." })
     }
 
     if (upstreamResponse.ok) break
     upstreamErrorText = await upstreamResponse.text().catch(() => "")
     if (index === attempts.length - 1 || !retryableStatus(upstreamResponse.status, upstreamErrorText)) break
-    console.warn(`[Fryn] Rota ${attempt.kind} indisponivel (HTTP ${upstreamResponse.status}); tentando proxima rota.`)
+    console.warn(`[Fryn] Upstream instavel (HTTP ${upstreamResponse.status}); tentando novamente.`)
     upstreamResponse = undefined
+    await wait(UPSTREAM_RETRY_DELAY_MS)
   }
 
   metric.lastLatencyMs = Date.now() - startedAt
@@ -401,7 +417,7 @@ async function proxyAI(req, res, path) {
   metric.lastStatus = upstreamResponse?.status || 502
   if (!upstreamResponse) {
     metric.failures++
-    return json(res, 502, { error: "Fryn AI indisponivel no momento." })
+    return json(res, 502, { error: "O Fryn AI ficou indisponivel por alguns segundos. Tente novamente." })
   }
   if (upstreamResponse.ok) metric.successes++
   else metric.failures++

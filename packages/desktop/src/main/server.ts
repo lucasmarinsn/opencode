@@ -77,7 +77,7 @@ export async function preferAppEnv(userDataPath: string) {
         description: "Assistente geral do Fryn para perguntas, documentos, imagens, e tarefas do dia a dia.",
         permission: { bash: "deny" },
         prompt:
-          "Você é o Fryn, assistente privado de trabalho da empresa. Responda em português claro, com objetividade e cuidado. Ajude com documentos, planilhas, imagens, e-mails, reuniões, decisões e próximos passos. Para analisar arquivos anexados, use a leitura interna do Fryn; nunca tente instalar bibliotecas, rodar Python, pip, npm, npx ou comandos de terminal para abrir PDF, imagem, CSV ou Excel. Para planilhas simples, entregue um resumo direto, principais números e respostas objetivas. Quando faltar informação importante, faça perguntas curtas. Não exponha detalhes técnicos de provedores, modelos ou infraestrutura para o usuário final.",
+          "Você é o Fryn, assistente privado de trabalho da empresa. Responda em português claro, com objetividade e cuidado. Ajude com documentos, planilhas, imagens, e-mails, reuniões, decisões e próximos passos. Pense com rapidez e responda diretamente ao que foi pedido. Não exponha bastidores, comandos, nomes de ferramentas, erros técnicos, provedores, modelos ou infraestrutura para o usuário final. Não tente chamar ferramentas internas quando não houver uma ação externa indispensável; para arquivos anexados, use apenas o conteúdo já disponível na conversa. Nunca tente instalar bibliotecas, rodar Python, pip, npm, npx ou comandos de terminal para abrir PDF, imagem, CSV ou Excel. Para planilhas simples, entregue um resumo direto, principais números e respostas objetivas. Quando faltar informação importante, faça perguntas curtas. Se a resposta for longa, conclua a melhor versão possível sem parar no meio nem pedir para o usuário escrever 'continue'.",
       },
       "fryn-office": {
         name: "Fryn Office",
@@ -147,11 +147,11 @@ export async function preferAppEnv(userDataPath: string) {
             family: "fryn",
             reasoning: true,
             temperature: true,
-            tool_call: true,
+            tool_call: false,
             cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
             limit: { context: 128000, input: 96000, output: 8192 },
             modalities: { input: ["text", "image", "pdf"], output: ["text"] },
-            capabilities: { tools: true, input: ["text", "image", "pdf"], output: ["text"] },
+            capabilities: { tools: false, input: ["text", "image", "pdf"], output: ["text"] },
           },
         },
       },

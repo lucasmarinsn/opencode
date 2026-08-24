@@ -30,7 +30,7 @@ const UPSTREAM_TEXT_MODEL =
 const UPSTREAM_MULTIMODAL_MODEL =
   process.env.FRYN_UPSTREAM_MULTIMODAL_MODEL ||
   (UPSTREAM_PROVIDER === "mimo" ? process.env.MIMO_MULTIMODAL_MODEL || "mimo-v2.5" : UPSTREAM_TEXT_MODEL)
-const DEFAULT_MAX_COMPLETION_TOKENS = integerEnv("FRYN_MAX_COMPLETION_TOKENS", 2048, 256, 32768)
+const DEFAULT_MAX_COMPLETION_TOKENS = integerEnv("FRYN_MAX_COMPLETION_TOKENS", 4096, 256, 32768)
 const LOGICAL_MODELS = [
   {
     id: "assistant",
@@ -39,7 +39,7 @@ const LOGICAL_MODELS = [
     model: UPSTREAM_TEXT_MODEL,
     multimodalModel: UPSTREAM_MULTIMODAL_MODEL,
     modalities: { input: ["text", "image", "pdf"], output: ["text"] },
-    capabilities: { tools: true, input: ["text", "image", "pdf"], output: ["text"] },
+    capabilities: { tools: false, input: ["text", "image", "pdf"], output: ["text"] },
   },
 ]
 const DEFAULT_LOGICAL_MODEL = "assistant"

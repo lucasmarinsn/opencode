@@ -98,7 +98,12 @@ try {
   }).then((response) => response.json())
   assert.deepEqual(codexModels.data.map((item) => item.id), ["fryn-oee"])
 
-  const codexResponse = await fetch(`http://127.0.0.1:${backendPort}/codex/v1/responses`, {
+  const frynModels = await fetch(`http://127.0.0.1:${backendPort}/fryn/v1/models`, {
+    headers: { authorization: "Bearer sk-test-codex-key" },
+  }).then((response) => response.json())
+  assert.deepEqual(frynModels.data.map((item) => item.id), ["fryn-oee"])
+
+  const codexResponse = await fetch(`http://127.0.0.1:${backendPort}/fryn/v1/responses`, {
     method: "POST",
     headers: { authorization: "Bearer sk-test-codex-key", "content-type": "application/json" },
     body: JSON.stringify({
@@ -117,6 +122,38 @@ try {
   assert.equal(lastPath, "/chat/completions")
   assert.equal(lastBody.model, "mimo-v2.5")
   assert.deepEqual(lastBody.messages[0], { role: "system", content: "Ajude com OEE." })
+
+  const frynChat = await fetch(`http://127.0.0.1:${backendPort}/fryn/v1/chat/completions`, {
+    method: "POST",
+    headers: { authorization: "Bearer sk-test-codex-key", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "fryn-oee",
+      messages: [{ role: "user", content: "responda ok" }],
+    }),
+  })
+  const frynChatJson = await frynChat.json()
+  assert.equal(frynChat.status, 200)
+  assert.equal(frynChatJson.model, "fryn-oee")
+  assert.equal(frynChatJson.choices[0].message.content, "ok")
+  assert.equal(lastAuthorization, "Bearer sk-test-codex-key")
+  assert.equal(lastBody.model, "mimo-v2.5")
+  assert.ok(!/xiaomi|mimo-v2/i.test(JSON.stringify(frynChatJson)))
+
+  const frynChatStream = await fetch(`http://127.0.0.1:${backendPort}/fryn/v1/chat/completions`, {
+    method: "POST",
+    headers: { authorization: "Bearer sk-test-codex-key", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "fryn-oee",
+      stream: true,
+      messages: [{ role: "user", content: "responda ok" }],
+    }),
+  })
+  const frynChatEvents = await frynChatStream.text()
+  assert.equal(frynChatStream.status, 200)
+  assert.match(frynChatStream.headers.get("content-type"), /text\/event-stream/)
+  assert.ok(frynChatEvents.includes('"model":"fryn-oee"'))
+  assert.ok(frynChatEvents.includes("data: [DONE]"))
+  assert.ok(!/xiaomi|mimo-v2/i.test(frynChatEvents))
 
   const codexTool = await fetch(`http://127.0.0.1:${backendPort}/codex/v1/responses`, {
     method: "POST",

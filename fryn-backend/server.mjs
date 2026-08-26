@@ -519,18 +519,104 @@ function sendResponseEvents(res, response) {
   res.end("data: [DONE]\n\n")
 }
 
+function normalizeFrynChatCompletion(completion) {
+  let normalized
+  try {
+    normalized = JSON.parse(sanitizeUpstream(JSON.stringify(completion)))
+  } catch {
+    normalized = completion
+  }
+  return { ...normalized, model: CODEX_LOGICAL_MODEL }
+}
+
+function sendChatCompletionEvents(res, completion) {
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  })
+  const choice = completion?.choices?.[0] || {}
+  const message = choice.message || {}
+  const base = {
+    id: completion.id || `chatcmpl_${randomBytes(12).toString("hex")}`,
+    object: "chat.completion.chunk",
+    created: completion.created || Math.floor(Date.now() / 1000),
+    model: CODEX_LOGICAL_MODEL,
+  }
+  const send = (delta, finishReason = null) => {
+    res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`)
+  }
+  send({ role: "assistant", ...(message.content ? { content: message.content } : {}) })
+  if (message.tool_calls?.length) {
+    send({
+      tool_calls: message.tool_calls.map((call, index) => ({
+        index,
+        id: call.id,
+        type: "function",
+        function: { name: call.function?.name, arguments: contentText(call.function?.arguments || "{}") },
+      })),
+    })
+  }
+  send({}, choice.finish_reason || (message.tool_calls?.length ? "tool_calls" : "stop"))
+  res.end("data: [DONE]\n\n")
+}
+
+async function frynChatCompletions(res, apiKey, body) {
+  if (!Array.isArray(body.messages) || !body.messages.length) {
+    return json(res, 400, { error: { message: "A solicitacao nao contem mensagens.", type: "invalid_request_error" } })
+  }
+  const wantsStream = body.stream === true
+  const upstreamBody = { ...body, model: CODEX_MIMO_MODEL, stream: false }
+  delete upstreamBody.models
+  delete upstreamBody.provider
+
+  let upstreamResponse
+  try {
+    upstreamResponse = await fetch(`${CODEX_MIMO_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify(upstreamBody),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    })
+  } catch (error) {
+    console.error("[Fryn API] Upstream indisponivel:", error?.message || error)
+    return json(res, 502, { error: { message: "O Fryn ficou indisponivel por alguns segundos.", type: "api_error" } })
+  }
+
+  const raw = await upstreamResponse.text()
+  if (!upstreamResponse.ok) {
+    let detail = "A solicitacao foi recusada pelo provedor do Fryn."
+    try {
+      const parsed = JSON.parse(raw)
+      detail = parsed?.error?.message || parsed?.message || detail
+    } catch {}
+    return json(res, upstreamResponse.status, { error: { message: sanitizeUpstream(detail), type: "upstream_error" } })
+  }
+
+  let completion
+  try {
+    completion = normalizeFrynChatCompletion(JSON.parse(raw))
+  } catch {
+    return json(res, 502, { error: { message: "O Fryn recebeu uma resposta invalida.", type: "api_error" } })
+  }
+  return wantsStream ? sendChatCompletionEvents(res, completion) : json(res, 200, completion)
+}
+
 async function codexGateway(req, res, path) {
   const apiKey = codexApiKey(req)
   if (!apiKey) return json(res, 401, { error: { message: "Chave MiMo invalida ou ausente.", type: "authentication_error" } })
   if (!codexRateAllowed(apiKey)) return json(res, 429, { error: { message: "Muitas solicitacoes. Tente novamente em instantes.", type: "rate_limit_error" } })
 
-  if (req.method === "GET" && path === "/codex/v1/models") {
+  const gatewayPath = path.replace(/^\/(?:codex|fryn)\/v1/, "")
+
+  if (req.method === "GET" && gatewayPath === "/models") {
     return json(res, 200, {
       object: "list",
       data: [{ id: CODEX_LOGICAL_MODEL, object: "model", created: 0, owned_by: "fryn" }],
     })
   }
-  if (req.method !== "POST" || path !== "/codex/v1/responses") {
+  if (req.method !== "POST" || !["/responses", "/chat/completions"].includes(gatewayPath)) {
     return json(res, req.method === "POST" ? 404 : 405, { error: { message: "Rota nao encontrada.", type: "invalid_request_error" } })
   }
 
@@ -538,6 +624,7 @@ async function codexGateway(req, res, path) {
   if (body.model && body.model !== CODEX_LOGICAL_MODEL) {
     return json(res, 400, { error: { message: `Use o modelo ${CODEX_LOGICAL_MODEL}.`, type: "invalid_request_error" } })
   }
+  if (gatewayPath === "/chat/completions") return frynChatCompletions(res, apiKey, body)
   const messages = responsesInputToMessages(body)
   if (!messages.length) return json(res, 400, { error: { message: "A solicitacao nao contem mensagens.", type: "invalid_request_error" } })
 
@@ -835,7 +922,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith("/admin/api/")) return await adminApi(req, res, url)
     if (req.method === "POST" && url.pathname === "/api/activate") return await activate(req, res)
     if (req.method === "GET" && url.pathname === "/api/license/status") return await status(req, res)
-    if (url.pathname.startsWith("/codex/v1/")) return await codexGateway(req, res, url.pathname)
+    if (/^\/(?:codex|fryn)\/v1\//.test(url.pathname)) return await codexGateway(req, res, url.pathname)
     if (url.pathname.startsWith("/v1/")) return await proxyAI(req, res, url.pathname)
     return json(res, 404, { error: "not_found" })
   } catch (error) {

@@ -30,6 +30,9 @@ const UPSTREAM_TEXT_MODEL =
 const UPSTREAM_MULTIMODAL_MODEL =
   process.env.FRYN_UPSTREAM_MULTIMODAL_MODEL ||
   (UPSTREAM_PROVIDER === "mimo" ? process.env.MIMO_MULTIMODAL_MODEL || "mimo-v2.5" : UPSTREAM_TEXT_MODEL)
+const CODEX_MIMO_BASE_URL = normalizeBaseUrl(process.env.FRYN_CODEX_MIMO_BASE_URL || "https://api.xiaomimimo.com/v1")
+const CODEX_MIMO_MODEL = process.env.FRYN_CODEX_MIMO_MODEL || "mimo-v2.5"
+const CODEX_LOGICAL_MODEL = "fryn-oee"
 const DEFAULT_MAX_COMPLETION_TOKENS = integerEnv("FRYN_MAX_COMPLETION_TOKENS", 4096, 256, 32768)
 const LOGICAL_MODELS = [
   {
@@ -214,6 +217,10 @@ function rateAllowed(license) {
   return true
 }
 
+function codexRateAllowed(apiKey) {
+  return rateAllowed({ id: `codex:${hashToken(apiKey)}` })
+}
+
 function publicLicense(license) {
   return {
     id: license.id,
@@ -313,6 +320,270 @@ function hasMultimodalInput(value) {
     if (hasMultimodalInput(raw)) return true
   }
   return false
+}
+
+function codexApiKey(req) {
+  const apiKey = bearer(req)
+  return /^sk-[A-Za-z0-9_-]{8,}$/.test(apiKey) ? apiKey : ""
+}
+
+function contentText(value) {
+  if (typeof value === "string") return value
+  if (value === null || value === undefined) return ""
+  return typeof value === "object" ? JSON.stringify(value) : String(value)
+}
+
+function responsesContentToChat(content) {
+  if (typeof content === "string") return content
+  if (!Array.isArray(content)) return contentText(content)
+
+  const parts = []
+  for (const part of content) {
+    if (typeof part === "string") {
+      parts.push({ type: "text", text: part })
+      continue
+    }
+    if (!part || typeof part !== "object") continue
+    if (["input_text", "output_text", "text"].includes(part.type)) {
+      parts.push({ type: "text", text: contentText(part.text) })
+      continue
+    }
+    if (["input_image", "image_url"].includes(part.type)) {
+      const url = typeof part.image_url === "string" ? part.image_url : part.image_url?.url || part.url
+      if (url) parts.push({ type: "image_url", image_url: { url } })
+      continue
+    }
+    if (part.type === "input_file") {
+      const fileText = part.file_data || part.file_url || part.filename
+      if (fileText) parts.push({ type: "text", text: `[Arquivo fornecido: ${contentText(fileText)}]` })
+    }
+  }
+  if (!parts.length) return ""
+  if (parts.length === 1 && parts[0].type === "text") return parts[0].text
+  return parts
+}
+
+function responsesInputToMessages(body) {
+  const messages = []
+  if (body.instructions) messages.push({ role: "system", content: contentText(body.instructions) })
+
+  const input = typeof body.input === "string" ? [{ type: "message", role: "user", content: body.input }] : body.input
+  if (!Array.isArray(input)) return messages
+
+  let pendingToolCalls = []
+  const flushToolCalls = () => {
+    if (!pendingToolCalls.length) return
+    messages.push({ role: "assistant", content: null, tool_calls: pendingToolCalls })
+    pendingToolCalls = []
+  }
+
+  for (const item of input) {
+    if (typeof item === "string") {
+      flushToolCalls()
+      messages.push({ role: "user", content: item })
+      continue
+    }
+    if (!item || typeof item !== "object") continue
+
+    if (item.type === "function_call") {
+      pendingToolCalls.push({
+        id: item.call_id || item.id || `call_${randomBytes(8).toString("hex")}`,
+        type: "function",
+        function: { name: item.name, arguments: contentText(item.arguments || "{}") },
+      })
+      continue
+    }
+
+    flushToolCalls()
+    if (item.type === "function_call_output") {
+      messages.push({
+        role: "tool",
+        tool_call_id: item.call_id,
+        content: contentText(item.output),
+      })
+      continue
+    }
+    if (item.type === "message" || item.role) {
+      messages.push({
+        role: item.role === "developer" ? "system" : item.role || "user",
+        content: responsesContentToChat(item.content),
+      })
+      continue
+    }
+    if (["input_text", "input_image", "image_url"].includes(item.type)) {
+      messages.push({ role: "user", content: responsesContentToChat([item]) })
+    }
+  }
+  flushToolCalls()
+  return messages
+}
+
+function responsesToolsToChat(tools) {
+  if (!Array.isArray(tools)) return undefined
+  const mapped = tools
+    .filter((tool) => tool?.type === "function" && tool.name)
+    .map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        ...(tool.description ? { description: tool.description } : {}),
+        parameters: tool.parameters || { type: "object", properties: {} },
+        ...(tool.strict !== undefined ? { strict: tool.strict } : {}),
+      },
+    }))
+  return mapped.length ? mapped : undefined
+}
+
+function responsesToolChoiceToChat(choice) {
+  if (!choice || typeof choice === "string") return choice
+  if (choice.type === "function" && choice.name) return { type: "function", function: { name: choice.name } }
+  return undefined
+}
+
+function responseIds() {
+  const suffix = randomBytes(12).toString("hex")
+  return { response: `resp_${suffix}`, message: `msg_${suffix}` }
+}
+
+function chatCompletionToResponse(completion) {
+  const ids = responseIds()
+  const message = completion?.choices?.[0]?.message || {}
+  const output = []
+  if (typeof message.content === "string" && message.content) {
+    output.push({
+      id: ids.message,
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text: message.content, annotations: [] }],
+    })
+  }
+  for (const [index, call] of (message.tool_calls || []).entries()) {
+    output.push({
+      id: `fc_${randomBytes(12).toString("hex")}`,
+      type: "function_call",
+      status: "completed",
+      call_id: call.id || `call_${index}_${randomBytes(8).toString("hex")}`,
+      name: call.function?.name || "tool",
+      arguments: contentText(call.function?.arguments || "{}"),
+    })
+  }
+  const usage = completion?.usage || {}
+  return {
+    id: ids.response,
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    status: "completed",
+    error: null,
+    incomplete_details: null,
+    model: CODEX_LOGICAL_MODEL,
+    output,
+    parallel_tool_calls: true,
+    usage: {
+      input_tokens: usage.prompt_tokens || 0,
+      output_tokens: usage.completion_tokens || 0,
+      total_tokens: usage.total_tokens || 0,
+    },
+  }
+}
+
+function sendResponseEvents(res, response) {
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  })
+  let sequence = 0
+  const send = (type, payload) => {
+    const event = { type, sequence_number: sequence++, ...payload }
+    res.write(`event: ${type}\ndata: ${JSON.stringify(event)}\n\n`)
+  }
+
+  send("response.created", { response: { ...response, status: "in_progress", output: [] } })
+  response.output.forEach((item, outputIndex) => {
+    send("response.output_item.added", { output_index: outputIndex, item: { ...item, status: "in_progress" } })
+    if (item.type === "message") {
+      const part = item.content[0]
+      send("response.content_part.added", { item_id: item.id, output_index: outputIndex, content_index: 0, part: { ...part, text: "" } })
+      send("response.output_text.delta", { item_id: item.id, output_index: outputIndex, content_index: 0, delta: part.text })
+      send("response.output_text.done", { item_id: item.id, output_index: outputIndex, content_index: 0, text: part.text })
+      send("response.content_part.done", { item_id: item.id, output_index: outputIndex, content_index: 0, part })
+    } else if (item.type === "function_call") {
+      send("response.function_call_arguments.delta", { item_id: item.id, output_index: outputIndex, delta: item.arguments })
+      send("response.function_call_arguments.done", { item_id: item.id, output_index: outputIndex, arguments: item.arguments })
+    }
+    send("response.output_item.done", { output_index: outputIndex, item })
+  })
+  send("response.completed", { response })
+  res.end("data: [DONE]\n\n")
+}
+
+async function codexGateway(req, res, path) {
+  const apiKey = codexApiKey(req)
+  if (!apiKey) return json(res, 401, { error: { message: "Chave MiMo invalida ou ausente.", type: "authentication_error" } })
+  if (!codexRateAllowed(apiKey)) return json(res, 429, { error: { message: "Muitas solicitacoes. Tente novamente em instantes.", type: "rate_limit_error" } })
+
+  if (req.method === "GET" && path === "/codex/v1/models") {
+    return json(res, 200, {
+      object: "list",
+      data: [{ id: CODEX_LOGICAL_MODEL, object: "model", created: 0, owned_by: "fryn" }],
+    })
+  }
+  if (req.method !== "POST" || path !== "/codex/v1/responses") {
+    return json(res, req.method === "POST" ? 404 : 405, { error: { message: "Rota nao encontrada.", type: "invalid_request_error" } })
+  }
+
+  const body = await readJson(req)
+  if (body.model && body.model !== CODEX_LOGICAL_MODEL) {
+    return json(res, 400, { error: { message: `Use o modelo ${CODEX_LOGICAL_MODEL}.`, type: "invalid_request_error" } })
+  }
+  const messages = responsesInputToMessages(body)
+  if (!messages.length) return json(res, 400, { error: { message: "A solicitacao nao contem mensagens.", type: "invalid_request_error" } })
+
+  const tools = responsesToolsToChat(body.tools)
+  const toolChoice = responsesToolChoiceToChat(body.tool_choice)
+  const upstreamBody = {
+    model: CODEX_MIMO_MODEL,
+    messages,
+    stream: false,
+    max_completion_tokens: body.max_output_tokens || DEFAULT_MAX_COMPLETION_TOKENS,
+    ...(tools ? { tools } : {}),
+    ...(toolChoice ? { tool_choice: toolChoice } : {}),
+    ...(body.parallel_tool_calls !== undefined ? { parallel_tool_calls: body.parallel_tool_calls } : {}),
+  }
+
+  let upstreamResponse
+  try {
+    upstreamResponse = await fetch(`${CODEX_MIMO_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify(upstreamBody),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    })
+  } catch (error) {
+    console.error("[Fryn Codex] Upstream indisponivel:", error?.message || error)
+    return json(res, 502, { error: { message: "O Fryn ficou indisponivel por alguns segundos.", type: "api_error" } })
+  }
+
+  const raw = await upstreamResponse.text()
+  if (!upstreamResponse.ok) {
+    let detail = "A solicitacao foi recusada pelo provedor do Fryn."
+    try {
+      const parsed = JSON.parse(raw)
+      detail = parsed?.error?.message || parsed?.message || detail
+    } catch {}
+    return json(res, upstreamResponse.status, { error: { message: sanitizeUpstream(detail), type: "upstream_error" } })
+  }
+
+  let completion
+  try {
+    completion = JSON.parse(raw)
+  } catch {
+    return json(res, 502, { error: { message: "O Fryn recebeu uma resposta invalida.", type: "api_error" } })
+  }
+  const response = chatCompletionToResponse(completion)
+  return body.stream ? sendResponseEvents(res, response) : json(res, 200, response)
 }
 
 async function proxyAI(req, res, path) {
@@ -564,6 +835,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith("/admin/api/")) return await adminApi(req, res, url)
     if (req.method === "POST" && url.pathname === "/api/activate") return await activate(req, res)
     if (req.method === "GET" && url.pathname === "/api/license/status") return await status(req, res)
+    if (url.pathname.startsWith("/codex/v1/")) return await codexGateway(req, res, url.pathname)
     if (url.pathname.startsWith("/v1/")) return await proxyAI(req, res, url.pathname)
     return json(res, 404, { error: "not_found" })
   } catch (error) {

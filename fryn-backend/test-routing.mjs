@@ -9,21 +9,39 @@ const backendPort = 18992
 const expectedTextModel = "mimo-v2.5"
 const expectedMultimodalModel = "mimo-v2.5"
 let lastBody
+let lastAuthorization
+let lastPath
 
 const upstream = createServer(async (req, res) => {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
   lastBody = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")
+  lastAuthorization = req.headers.authorization
+  lastPath = req.url
   if (lastBody.stream) {
     res.writeHead(200, { "content-type": "text/event-stream" })
     res.write(`data: ${JSON.stringify({ id: "x", model: lastBody.model, choices: [{ delta: { content: "ok" } }] })}\n\n`)
     res.end("data: [DONE]\n\n")
     return
   }
+  const wantsTool = Array.isArray(lastBody.tools) && lastBody.messages?.some((message) => String(message.content).includes("use tool"))
   const data = JSON.stringify({
     id: "x",
     model: lastBody.model,
-    choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+    choices: [
+      wantsTool
+        ? {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [{ id: "call_test", type: "function", function: { name: "read_oee", arguments: '{"date":"2026-08-26"}' } }],
+            },
+            finish_reason: "tool_calls",
+          }
+        : { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
+    ],
+    usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
   })
   res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(data) })
   res.end(data)
@@ -37,6 +55,7 @@ process.env.FRYN_ADMIN_TOKEN = "test-admin-token"
 process.env.FRYN_UPSTREAM_PROVIDER = "mimo"
 process.env.MIMO_API_KEY = "test-mimo-key"
 process.env.MIMO_BASE_URL = `http://127.0.0.1:${upstreamPort}`
+process.env.FRYN_CODEX_MIMO_BASE_URL = `http://127.0.0.1:${upstreamPort}`
 delete process.env.FRYN_UPSTREAM_BASE_URL
 const { server } = await import(`./server.mjs?test=${Date.now()}`)
 
@@ -73,6 +92,56 @@ try {
   assert.deepEqual(models.data.map((item) => item.id), ["assistant"])
   assert.deepEqual(models.data[0].modalities, { input: ["text", "image", "pdf"], output: ["text"] })
   assert.deepEqual(models.data[0].capabilities, { tools: false, input: ["text", "image", "pdf"], output: ["text"] })
+
+  const codexModels = await fetch(`http://127.0.0.1:${backendPort}/codex/v1/models`, {
+    headers: { authorization: "Bearer sk-test-codex-key" },
+  }).then((response) => response.json())
+  assert.deepEqual(codexModels.data.map((item) => item.id), ["fryn-oee"])
+
+  const codexResponse = await fetch(`http://127.0.0.1:${backendPort}/codex/v1/responses`, {
+    method: "POST",
+    headers: { authorization: "Bearer sk-test-codex-key", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "fryn-oee",
+      instructions: "Ajude com OEE.",
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "responda ok" }] }],
+    }),
+  })
+  const codexJson = await codexResponse.json()
+  assert.equal(codexResponse.status, 200)
+  assert.equal(codexJson.object, "response")
+  assert.equal(codexJson.model, "fryn-oee")
+  assert.equal(codexJson.output[0].content[0].text, "ok")
+  assert.deepEqual(codexJson.usage, { input_tokens: 10, output_tokens: 2, total_tokens: 12 })
+  assert.equal(lastAuthorization, "Bearer sk-test-codex-key")
+  assert.equal(lastPath, "/chat/completions")
+  assert.equal(lastBody.model, "mimo-v2.5")
+  assert.deepEqual(lastBody.messages[0], { role: "system", content: "Ajude com OEE." })
+
+  const codexTool = await fetch(`http://127.0.0.1:${backendPort}/codex/v1/responses`, {
+    method: "POST",
+    headers: { authorization: "Bearer sk-test-codex-key", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "fryn-oee",
+      input: "use tool",
+      tools: [{ type: "function", name: "read_oee", description: "Le o OEE", parameters: { type: "object", properties: {} } }],
+      stream: true,
+    }),
+  })
+  const codexEvents = await codexTool.text()
+  assert.equal(codexTool.status, 200)
+  assert.match(codexTool.headers.get("content-type"), /text\/event-stream/)
+  assert.ok(codexEvents.includes("response.function_call_arguments.done"))
+  assert.ok(codexEvents.includes('"name":"read_oee"'))
+  assert.ok(codexEvents.includes("response.completed"))
+  assert.ok(!/xiaomi|mimo-v2/i.test(codexEvents))
+
+  const invalidCodexKey = await fetch(`http://127.0.0.1:${backendPort}/codex/v1/responses`, {
+    method: "POST",
+    headers: { authorization: "Bearer invalid", "content-type": "application/json" },
+    body: JSON.stringify({ model: "fryn-oee", input: "test" }),
+  })
+  assert.equal(invalidCodexKey.status, 401)
 
   for (const model of ["assistant", "fryn-code", "fryn-fast", "fryn-expert", "fryn-plan", "fryn-vision"]) {
     const response = await fetch(`http://127.0.0.1:${backendPort}/v1/chat/completions`, {
